@@ -410,8 +410,8 @@ func (a *App) drawTooltip(dst *ebiten.Image, lines [][]Seg, sx, sy float64, avoi
 }
 
 // segIcons are segments drawn as icons: "@" is the credits icon, "◆" a
-// crystal, "★" an earned star and "☆" a missing one.
-var segIcons = map[string]string{"@": "cr", "◆": "crystal", "★": "star", "☆": "star0"}
+// crystal, "★" an earned star, "☆" a missing one and "{trophy}" a trophy.
+var segIcons = map[string]string{"@": "cr", "◆": "crystal", "★": "star", "☆": "star0", "{trophy}": "trophy"}
 
 func (a *App) segsWidthIcons(segs []Seg, sc int) int {
 	w := 0

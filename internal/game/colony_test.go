@@ -105,3 +105,21 @@ func TestRank(t *testing.T) {
 		}
 	}
 }
+
+func TestEuropaAvailabilityAndEconomy(t *testing.T) {
+	if Europa.Soon || Europa.Level != WyrmLake || Europa.Biome != "ice" {
+		t.Fatal("Europa must be an ice colony unlocked by Wyrm Lake")
+	}
+	if Europa.Stages() != 14 || Europa.Cost() != 615 {
+		t.Fatalf("unexpected Europa economy: %d stages, %d crystals", Europa.Stages(), Europa.Cost())
+	}
+	for _, id := range []string{"europa.habitat", "europa.drill", "europa.greenhouse", "europa.lab", "europa.thermal", "europa.pad", "europa.monument"} {
+		if Europa.Building(id) == nil {
+			t.Errorf("missing %s", id)
+		}
+	}
+	record := map[string]int{"mars.habitat": 3, "europa.habitat": 2, "europa.drill": 1}
+	if Mars.BuiltIn(record) != 3 || Europa.BuiltIn(record) != 3 {
+		t.Fatal("colonies must have separate progress")
+	}
+}

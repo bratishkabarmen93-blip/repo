@@ -118,7 +118,10 @@ func (d debugConfig) applyColony(s *Save) {
 	for _, f := range strings.Split(d.colony, ",") {
 		if id, n, ok := strings.Cut(f, ":"); ok {
 			v, _ := strconv.Atoi(n)
-			s.Colony["mars."+id] = v
+			if !strings.Contains(id, ".") {
+				id = "mars." + id
+			}
+			s.Colony[id] = v
 		}
 	}
 }
@@ -201,6 +204,9 @@ func publishState(a *App) {
 	st["crystals"] = a.save.Crystals
 	st["colony"] = a.save.Colony
 	if a.scr == scrColony {
+		st["colTab"] = a.col.tab
+		st["colLocation"] = a.colonyLoc().ID
+		st["colLocked"] = !a.onBridge() && a.colonyLocked(a.colonyLoc())
 		lots := map[string][2]float64{}
 		for _, b := range a.colonyLoc().Buildings {
 			x0, y0, x1, y1 := a.lotRect(b)

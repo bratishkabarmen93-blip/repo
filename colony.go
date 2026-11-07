@@ -454,6 +454,13 @@ func (a *App) pressColony(id string) bool {
 			}
 		} else if n, ok := cutIndex(id, "loc:"); ok {
 			if t := colonyTabs(); n < len(t) && !t[n].soon && n != c.tab {
+				// Purchases are already saved. Finish their visual animation before
+				// changing maps; old building pointers belong to the old location.
+				c.anims = c.anims[:0]
+				a.fx.Reset()
+				if won := a.save.claimTrophies(); len(won) > 0 {
+					a.trophyToast(won)
+				}
 				c.tab = n
 				c.sel = nil
 				a.showColony()
@@ -913,6 +920,9 @@ func (a *App) drawColony(dst *ebiten.Image) {
 		a.drawColonyLock(dst, v, l)
 	default:
 		a.drawColonyMap(view, l)
+		if l.Biome == "ice" {
+			a.drawColonySnow(view, v)
+		}
 		a.drawPriceTags(view, l)
 	}
 
@@ -1036,6 +1046,25 @@ type colItem struct {
 	key  float64
 	kind int
 	i    int
+}
+
+// drawColonySnow adds a gentle, pixel-sized snowfall over Europa's terrain.
+func (a *App) drawColonySnow(dst *ebiten.Image, v Rect) {
+	x0, y0 := a.cam.ToScreen(0, 0)
+	x1, y1 := a.cam.ToScreen(a.cam.MapW, a.cam.MapH)
+	left, top := math.Max(x0, float64(v.X)), math.Max(y0, float64(v.Y))
+	right, bottom := math.Min(x1, float64(v.X+v.W)), math.Min(y1, float64(v.Y+v.H))
+	w, h := right-left, bottom-top
+	if w <= 1 || h <= 1 {
+		return
+	}
+	for i := 0; i < 48; i++ {
+		f := float64(i)
+		x := left + math.Mod(f*83.7+a.col.t*(2+float64(i%3)), w)
+		y := top + math.Mod(f*127.9+a.col.t*(6+float64(i%4)), h)
+		size := max(1, a.u-1)
+		fillRect(dst, int(x), int(y), size, size, pm(art.Silver, 0.5))
+	}
 }
 
 // drawColonyMap draws the ground, the buildings, the colonists and the

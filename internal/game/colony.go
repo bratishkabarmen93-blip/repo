@@ -130,10 +130,34 @@ var Mars = &Location{
 	},
 }
 
-// Europa, the ice moon of chapter 2, comes in a later version.
+// Europa is freed when the Ice Wyrm falls in 2-7.
 var Europa = &Location{
-	ID: "europa", Name: "Europa", Boss: "Ice Wyrm", Level: WyrmLake, Biome: "ice", Soon: true,
-	Desc: "The Ice Wyrm is gone and the frozen moon is open for settlers.",
+	ID: "europa", Name: "Europa", Boss: "Ice Wyrm", Level: WyrmLake, Biome: "ice",
+	Desc: "Beyond the ice, a new colony rises on the frozen moon.",
+	W:    24, H: 13, HQ: Cell{10, 5}, Avenue: 6.5,
+	Buildings: []*Building{
+		{ID: "europa.habitat", Name: "Polar Habitat", Lot: Cell{6, 2}, W: 2, H: 2,
+			Desc:   "Insulated homes shelter settlers from Europa's cold.",
+			Stages: []Stage{{25, "A warm dome for 3 colonists"}, {40, "A second dome, 6 colonists"}, {60, "A residential tower, 9 colonists"}}},
+		{ID: "europa.drill", Name: "Ice Drill", Lot: Cell{15, 9}, W: 2, H: 2,
+			Desc:   "An industrial drill reaches through Europa's thick ice.",
+			Stages: []Stage{{30, "Drill platform and tower"}, {45, "A processing tank and extra machinery"}}},
+		{ID: "europa.greenhouse", Name: "Hydroponics", Lot: Cell{6, 9}, W: 2, H: 2,
+			Desc:   "Warm, lit gardens grow food beneath the ice.",
+			Stages: []Stage{{30, "A protected growing tunnel"}, {45, "A second tunnel and water tank"}}},
+		{ID: "europa.lab", Name: "Research Lab", Lot: Cell{17, 2}, W: 2, H: 2,
+			Desc:   "Scientists study Europa and the creatures beneath its ice.",
+			Stages: []Stage{{35, "A research module"}, {50, "An observation dome and scanner"}}},
+		{ID: "europa.thermal", Name: "Thermal Plant", Lot: Cell{14, 2}, W: 2, H: 2,
+			Desc:   "A geothermal plant warms the colony through the long night.",
+			Stages: []Stage{{30, "A heat generator and steam vent"}, {45, "A second generator and storage tank"}}},
+		{ID: "europa.pad", Name: "Landing Pad", Lot: Cell{20, 5}, W: 3, H: 3,
+			Desc:   "A landing site for supply shuttles from the Vanguard.",
+			Stages: []Stage{{35, "A landing pad with lights"}, {55, "A control tower: shuttles start to arrive"}}},
+		{ID: "europa.monument", Name: "Wyrm Monument", Lot: Cell{1, 5}, W: 3, H: 3,
+			Desc:   "A memorial to the Ice Wyrm and the battle for Europa.",
+			Stages: []Stage{{90, "The Ice Wyrm on its pedestal"}}},
+	},
 }
 
 // BuiltIn counts the stages built of the location in a colony record

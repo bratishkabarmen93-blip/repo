@@ -106,6 +106,9 @@ func kind(b *game.Building) string {
 func BuildingScene(b *game.Building, stage int) *Scene {
 	switch kind(b) {
 	case "habitat":
+		if strings.HasPrefix(b.ID, "europa.") {
+			return polarHabitatScene(stage)
+		}
 		return habitatScene(stage)
 	case "solar":
 		return solarScene(stage)
@@ -118,7 +121,16 @@ func BuildingScene(b *game.Building, stage int) *Scene {
 	case "pad":
 		return landingPadScene(stage)
 	case "monument":
+		if strings.HasPrefix(b.ID, "europa.") {
+			return wyrmMonumentScene()
+		}
 		return monumentScene()
+	case "drill":
+		return iceDrillScene(stage)
+	case "lab":
+		return researchLabScene(stage)
+	case "thermal":
+		return thermalPlantScene(stage)
 	}
 	return &Scene{}
 }
@@ -169,6 +181,22 @@ func Effects(loc *game.Location, b *game.Building, stage int) BuildingFX {
 		}
 	case "comms":
 		fx.Red = append(fx.Red, V3{11, -9, 50})
+	case "drill":
+		fx.Amber = append(fx.Amber, V3{0, -3, 40})
+		if stage >= 2 {
+			fx.Sparks = append(fx.Sparks, V3{18, 10, 7})
+		}
+	case "lab":
+		fx.Green = append(fx.Green, V3{-10, 13, 14})
+		if stage >= 2 {
+			fx.Red = append(fx.Red, V3{17, -8, 29})
+		}
+	case "thermal":
+		fx.Smoke = append(fx.Smoke, V3{-14, -9, 27})
+		fx.Amber = append(fx.Amber, V3{-10, 11, 11})
+		if stage >= 2 {
+			fx.Smoke = append(fx.Smoke, V3{14, -9, 27})
+		}
 	case "pad":
 		for _, d := range [][2]float64{{-30, -30}, {30, -30}, {-30, 30}, {30, 30}} {
 			fx.Amber = append(fx.Amber, V3{d[0], d[1], 4})
@@ -588,8 +616,10 @@ func colonyBiome(loc *game.Location) *biome {
 	b := *desertBiome
 	if loc.Biome == "ice" {
 		b = *iceBiome
+		b.road = Ramp{Hex(0x202b40), Hex(0x36495d), Hex(0x53677b), Hex(0x758899), Hex(0x9aabb8), Hex(0xc8d5dd)}
+	} else {
+		b.road = concreteRamp
 	}
-	b.road = concreteRamp
 	return &b
 }
 
