@@ -14,12 +14,12 @@ import (
 
 // ---- Chapter select ----
 
-// The chapter select shows one card per chapter and a last one for the
-// skirmish; its index is len(game.Chapters).
+// The chapter select shows one card per chapter, then one for the skirmish
+// (its index is len(game.Chapters)) and one for the expeditions (expCard).
 
-func chapterCount() int { return len(game.Chapters) + 1 }
+func chapterCount() int { return len(game.Chapters) + 2 }
 
-// chapterAt is the chapter of a card, nil for the skirmish.
+// chapterAt is the chapter of a card, nil for the skirmish and the expeditions.
 func chapterAt(i int) *game.Chapter {
 	if i >= 0 && i < len(game.Chapters) {
 		return game.Chapters[i]
@@ -28,7 +28,7 @@ func chapterAt(i int) *game.Chapter {
 }
 
 type chapterCard struct {
-	ch    *game.Chapter // nil: the skirmish
+	ch    *game.Chapter // nil: the skirmish or the expeditions
 	btn   Button
 	thumb Rect
 }
@@ -70,6 +70,9 @@ func (a *App) chaptersLayout() chaptersLayout {
 	if chapterAt(a.chap) == nil {
 		b.Label = "Play"
 	}
+	if a.chap == expCard() {
+		b.Label = "Launch"
+	}
 	if !b.Enabled {
 		b.Label, b.Key = "Locked", ""
 	}
@@ -83,13 +86,25 @@ func (a *App) chapterOpen(i int) bool {
 	if c := chapterAt(i); c != nil {
 		return a.unlocked(c.Levels[0])
 	}
+	if i == expCard() {
+		return a.expOpen()
+	}
 	return a.unlocked(game.Skirmish)
 }
 
-// chapterPic is the level whose map pictures a chapter card.
-func chapterPic(i int) *game.LevelSpec {
+// chapterPic is the level whose map pictures a chapter card: for the
+// expeditions, the one on offer.
+func (a *App) chapterPic(i int) *game.LevelSpec {
 	if c := chapterAt(i); c != nil {
 		return c.Levels[0]
+	}
+	if i == expCard() {
+		if a.expOpen() {
+			if e := a.expedition(); e != nil {
+				return e.Spec
+			}
+		}
+		return game.Chapters[0].Levels[0]
 	}
 	return game.Skirmish
 }
@@ -117,6 +132,9 @@ func (a *App) openChapters() {
 
 // defaultChapter is the card of the level the player most likely wants next.
 func (a *App) defaultChapter() int {
+	if a.save.Last == game.ExpeditionID && a.expOpen() {
+		return expCard()
+	}
 	s := a.nextPick()
 	if s == nil {
 		return 0
@@ -156,9 +174,14 @@ func (a *App) pickChapter(i int) {
 	a.chap = i
 }
 
-// enterChapter opens the level select of the chosen chapter, or starts the skirmish.
+// enterChapter opens the level select of the chosen chapter, or starts the
+// skirmish or the expedition on offer.
 func (a *App) enterChapter() {
 	if !a.chapterOpen(a.chap) {
+		return
+	}
+	if a.chap == expCard() {
+		a.startExpedition()
 		return
 	}
 	c := chapterAt(a.chap)
@@ -210,7 +233,7 @@ func (a *App) drawChapters(dst *ebiten.Image) {
 	m := 10 * u
 	a.drawButton(dst, cl.back, 1)
 	a.drawText(dst, "Campaign", cl.titleX, m, 2*u, art.White, 1)
-	a.drawText(dst, "Pick a chapter, or the skirmish on the bonus map.", cl.titleX, m+14*u+6*u, u, art.Silver, 1)
+	a.drawText(dst, "Pick a chapter, the skirmish or an expedition.", cl.titleX, m+14*u+6*u, u, art.Silver, 1)
 	got, all := a.totalStars()
 	st := fmt.Sprintf("%d/%d", got, all)
 	sw := a.textWidth(st, 2*u)
@@ -234,16 +257,28 @@ func (a *App) drawChapterCard(dst *ebiten.Image, i int, cc chapterCard, sel bool
 	if !open {
 		cs.Scale(0.3, 0.3, 0.36, 1)
 	}
-	a.drawLevelPic(dst, chapterPic(i), tr, cs)
+	a.drawLevelPic(dst, a.chapterPic(i), tr, cs)
 	if !open {
 		a.drawIcon(dst, "lock", tr.X+tr.W/2-11*u, tr.Y+tr.H/2-11*u, 2*u, 1)
 	}
 	ty := tr.Y + tr.H + 4*u
 	label, name, lcol := "Skirmish", game.Skirmish.Name, art.Pink
 	got, all := a.best(game.Skirmish), 3
-	if c := cc.ch; c != nil {
+	exp := i == expCard()
+	var ex *game.Expedition
+	switch c := cc.ch; {
+	case c != nil:
 		label, name, lcol = fmt.Sprintf("Chapter %d", c.Num), c.Name, art.Cyan
 		got, all = a.chapterStars(c), 3*len(c.Levels)
+	case exp:
+		label, name, lcol = "Expeditions", "Always a new map", art.Lime
+		if open {
+			ex = a.expedition()
+		}
+		if ex != nil {
+			name = ex.Spec.Name
+		}
+		got = min(a.save.Exp.Won, 1) // NEW until the first one is won
 	}
 	fresh := open && got == 0
 	if fresh {
@@ -258,7 +293,13 @@ func (a *App) drawChapterCard(dst *ebiten.Image, i int, cc chapterCard, sel bool
 	}
 	a.drawText(dst, label, tr.X, ty, u, lcol, 1)
 	a.drawText(dst, name, tr.X, ty+10*u, u, nameCol, 1)
-	if cc.ch == nil {
+	switch {
+	case exp:
+		if ex != nil {
+			t := ex.Spec.Tier
+			a.drawSegs(dst, []Seg{{"Threat ", art.Gray}, {t.String(), tierColor(t)}}, tr.X, ty+24*u, u, 1)
+		}
+	case cc.ch == nil:
 		for j := 0; j < 3; j++ {
 			ic := "star0"
 			if j < got {
@@ -266,7 +307,7 @@ func (a *App) drawChapterCard(dst *ebiten.Image, i int, cc chapterCard, sel bool
 			}
 			a.drawIcon(dst, ic, tr.X+j*12*u, ty+22*u, u, 1)
 		}
-	} else {
+	default:
 		a.drawIcon(dst, "star", tr.X, ty+22*u, u, 1)
 		a.drawText(dst, fmt.Sprintf("%d/%d", got, all), tr.X+13*u, ty+24*u, u, art.Silver, 1)
 	}
@@ -286,6 +327,10 @@ func (a *App) drawChapterCard(dst *ebiten.Image, i int, cc chapterCard, sel bool
 }
 
 func (a *App) drawChapterDetail(dst *ebiten.Image, cl chaptersLayout) {
+	if a.chap == expCard() {
+		a.drawExpeditionDetail(dst, cl)
+		return
+	}
 	c := chapterAt(a.chap)
 	if c == nil {
 		a.drawSpecDetail(dst, cl.detail, game.Skirmish, cl.open)
@@ -371,6 +416,6 @@ func (a *App) drawChapterDetail(dst *ebiten.Image, cl chaptersLayout) {
 		tw := int(float64(th) / 0.44)
 		pr := Rect{x + (w-min(w, tw))/2, y + (room-th)/2 + 2*u, min(w, tw), th}
 		fillRect(dst, pr.X, pr.Y, pr.W, pr.H, bgColor)
-		a.drawLevelPic(dst, chapterPic(a.chap), pr, cs)
+		a.drawLevelPic(dst, a.chapterPic(a.chap), pr, cs)
 	}
 }

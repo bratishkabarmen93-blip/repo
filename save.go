@@ -31,6 +31,15 @@ type Save struct {
 	Flawless bool            `json:"flawless,omitempty"` // won a battle with the base untouched
 	Close    bool            `json:"close,omitempty"`    // won a battle with 10% of the base or less
 	Trophies map[string]bool `json:"trophies"`           // trophies won (and paid)
+	// Expeditions (v0.15): the one on offer and how many were won.
+	Exp ExpSave `json:"exp"`
+}
+
+// ExpSave is the state of the expeditions.
+type ExpSave struct {
+	Seed  int64 `json:"seed,omitempty"`  // the expedition on offer (0: none yet)
+	Count int   `json:"count,omitempty"` // expeditions put on offer so far
+	Won   int   `json:"won,omitempty"`   // expeditions won
 }
 
 func loadSave() *Save {
@@ -174,6 +183,9 @@ func (a *App) unlocked(s *game.LevelSpec) bool {
 	if a.dbg.unlock {
 		return true
 	}
+	if isExpedition(s) {
+		return a.expOpen()
+	}
 	c, i := chapterOf(s)
 	switch {
 	case c == nil:
@@ -236,8 +248,12 @@ func nextLevel(s *game.LevelSpec) *game.LevelSpec {
 	return nil
 }
 
-// levelLabel is "1-2" for campaign levels and "Skirmish" for the rest.
+// levelLabel is "1-2" for campaign levels, "Expedition" for expeditions
+// and "Skirmish" for the rest.
 func levelLabel(s *game.LevelSpec) string {
+	if isExpedition(s) {
+		return "Expedition"
+	}
 	if c, _ := chapterOf(s); c != nil {
 		return s.ID
 	}

@@ -33,6 +33,7 @@ type debugConfig struct {
 	wins        int    // pretend battles won (0: keep)
 	supers      string // pretend supers built: "blaster,cryo"
 	flags       string // pretend records: "flawless,close"
+	expSeed     int64  // pretend expedition on offer (?exp=1234)
 }
 
 // loadDebug reads test options from the page URL, e.g. ?speed=4.
@@ -59,6 +60,7 @@ func loadDebug() debugConfig {
 		d.wins, _ = strconv.Atoi(u.Query().Get("wins"))
 		d.supers = u.Query().Get("supers")
 		d.flags = u.Query().Get("flags")
+		d.expSeed, _ = strconv.ParseInt(u.Query().Get("exp"), 10, 64)
 		if st := u.Query().Get("stars"); st != "" {
 			for _, f := range strings.Split(st, ",") {
 				n, _ := strconv.Atoi(f)
@@ -71,6 +73,9 @@ func loadDebug() debugConfig {
 
 // applySave fills in pretend campaign results (?stars=3,2,1).
 func (d debugConfig) applySave(s *Save) {
+	if d.expSeed > 0 {
+		s.Exp.Seed = d.expSeed
+	}
 	var ids []string
 	for _, c := range game.Chapters {
 		for _, l := range c.Levels {
@@ -145,6 +150,8 @@ func publishState(a *App) {
 		"screen": int(a.scr), "panel": int(a.popup), "demo": a.demo, "level": a.spec.ID, "hold": w.Hold,
 		"pick": a.pick, "resStars": a.res.stars, "endT": a.endT, "tab": a.tab, "saved": a.save.Stars,
 		"fps": ebiten.ActualFPS(), "tps": ebiten.ActualTPS(),
+		"exp":  map[string]any{"seed": a.save.Exp.Seed, "count": a.save.Exp.Count, "won": a.save.Exp.Won},
+		"tier": int(a.spec.Tier), "levelName": a.spec.Name,
 	}
 	var slots []slotInfo
 	for i, s := range a.lvl.Slots {

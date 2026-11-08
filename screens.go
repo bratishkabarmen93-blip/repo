@@ -12,7 +12,7 @@ import (
 	"outpost/internal/game"
 )
 
-const version = "v0.14.0"
+const version = "v0.15.0"
 
 // demoSpec is the backdrop battle of the menus: the skirmish map with short
 // breaks and a base that cannot fall.
@@ -241,8 +241,12 @@ func (a *App) openLevels() {
 		c = a.chapter
 	}
 	if c == nil {
+		card := len(game.Chapters)
+		if isExpedition(a.spec) && !a.demo {
+			card = expCard()
+		}
 		a.openChapters()
-		a.chap = len(game.Chapters)
+		a.chap = card
 		return
 	}
 	if !a.demo {

@@ -129,6 +129,8 @@ type App struct {
 	fadeIn  float64
 	resetT  float64 // when "Reset progress" was armed
 	res     result
+	exp     *game.Expedition // the expedition on offer (made when first needed)
+	expKey  string           // the seed and knowledge it was made from
 
 	sw, sh int
 	dpi    float64
@@ -246,6 +248,10 @@ func NewApp() (*App, error) {
 	}
 	if s := game.LevelByID(a.dbg.level); s != nil {
 		a.startLevel(s)
+		return a, nil
+	}
+	if a.dbg.level == game.ExpeditionID && a.expOpen() {
+		a.startExpedition()
 		return a, nil
 	}
 	a.startDemo()
@@ -388,6 +394,9 @@ func (a *App) restart() {
 
 // levelSub is the line under a level name: "Level 1-2" or "Skirmish".
 func levelSub(s *game.LevelSpec) string {
+	if isExpedition(s) {
+		return "Expedition · " + expPayNote(s)
+	}
 	if c, _ := chapterOf(s); c != nil {
 		return "Level " + s.ID
 	}
@@ -806,6 +815,10 @@ func (a *App) markSeen(d *game.EnemyDef) {
 // recordWin saves the stars of a won level and notes what it unlocked.
 func (a *App) recordWin() {
 	s := a.spec
+	if isExpedition(s) {
+		a.recordExpedition()
+		return
+	}
 	nx := nextLevel(s)
 	wasLocked := nx != nil && !a.unlocked(nx)
 	a.res = result{stars: a.world.Stars(), prev: a.best(s)}
@@ -882,7 +895,14 @@ func (a *App) handleKeys() {
 		if a.endT < endKeysAfter {
 			return
 		}
+		isExp, expWon := isExpedition(a.spec), a.world.Phase == game.PhaseWon
 		switch {
+		case isExp && expWon && (enter || jp(ebiten.KeyN)):
+			a.startExpedition() // the next one: a won expedition is done
+		case isExp && expWon && jp(ebiten.KeyR):
+			// A won expedition is not replayed.
+		case isExp && jp(ebiten.KeyN):
+			a.swapExpedition()
 		case enter:
 			if nx := a.nextPlayable(); nx != nil {
 				a.startLevel(nx)
@@ -1168,6 +1188,10 @@ func (a *App) press(id string) {
 		a.paused = false
 	case "restart":
 		a.restart()
+	case "expnext":
+		a.startExpedition()
+	case "expnew":
+		a.swapExpedition()
 	case "next":
 		if nx := a.nextPlayable(); nx != nil {
 			a.startLevel(nx)

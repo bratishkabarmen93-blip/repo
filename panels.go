@@ -258,8 +258,15 @@ func (a *App) overlayColumn() (column, bool) {
 		if a.res.prev > 0 && a.res.stars > a.res.prev {
 			rows = append(rows, a.textRow("New best!", u, art.Amber))
 		}
+		if isExpedition(s) {
+			rows = append(rows, a.textRow(fmt.Sprintf("Expeditions won: %d", a.save.Exp.Won), u, art.Cyan))
+		}
 		if p := a.res.pay; p.Total > 0 {
-			rows = append(rows, a.gapRow(2), a.segRow([]Seg{{"◆", art.Pink}, {fmt.Sprintf(" +%d crystals", p.Total), art.Pink}, {"  · " + payNote(p), art.Gray}}))
+			note := payNote(p)
+			if isExpedition(s) {
+				note = expPayNote(s)
+			}
+			rows = append(rows, a.gapRow(2), a.segRow([]Seg{{"◆", art.Pink}, {fmt.Sprintf(" +%d crystals", p.Total), art.Pink}, {"  · " + note, art.Gray}}))
 		}
 		rows = append(rows, a.trophyRows()...)
 		colony := false
@@ -280,7 +287,9 @@ func (a *App) overlayColumn() (column, bool) {
 			rows = append(rows, a.gapRow(3), a.segRow(starRules()))
 		}
 		rows = append(rows, a.gapRow(6))
-		if nx := a.nextPlayable(); nx != nil {
+		if isExpedition(s) {
+			rows = append(rows, a.btnRow(Button{ID: "expnext", Label: "Next expedition", Key: "Enter", Primary: true}))
+		} else if nx := a.nextPlayable(); nx != nil {
 			label := "Next level"
 			if nx == game.Skirmish {
 				label = "Play Skirmish"
@@ -330,6 +339,9 @@ func (a *App) overlayColumn() (column, bool) {
 			a.gapRow(8),
 			a.btnRow(Button{ID: "restart", Label: "Retry", Key: "Enter", Primary: true}),
 		)
+		if isExpedition(s) {
+			rows = append(rows, a.btnRow(Button{ID: "expnew", Label: "New expedition", Key: "N"}))
+		}
 		if len(a.res.trophies) > 0 {
 			rows = append(rows, a.btnRow(Button{ID: "bridge", Label: "Bridge", Key: "B"}))
 		}
