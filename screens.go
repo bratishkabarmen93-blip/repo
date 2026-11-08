@@ -12,7 +12,7 @@ import (
 	"outpost/internal/game"
 )
 
-const version = "v0.15.0"
+const version = "v0.15.1"
 
 // demoSpec is the backdrop battle of the menus: the skirmish map with short
 // breaks and a base that cannot fall.

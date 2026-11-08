@@ -252,7 +252,7 @@ func (th expTheme) fits(pool []*EnemyDef) bool {
 // expKind is how an enemy type comes in waves.
 type expKind struct {
 	Cnt   [2]int     // group size, early and late waves
-	Gap   [2]float64 // seconds between two of them
+	Gap   [2]float64 // seconds between two of them (packs as tight as in the campaign: splash hits several)
 	From  int        // the first wave it may come in (0-based)
 	W     float64    // how hard a hit point of it is to stop
 	Tough float64    // its hit point multiplier against the others'
@@ -261,12 +261,12 @@ type expKind struct {
 var expKinds = map[string]expKind{
 	"crawler":   {[2]int{6, 14}, [2]float64{0.6, 0.9}, 0, 1, 1},
 	"runner":    {[2]int{6, 14}, [2]float64{0.35, 0.5}, 0, 1.25, 1},
-	"swarmling": {[2]int{16, 36}, [2]float64{0.15, 0.25}, 0, 0.9, 1},
+	"swarmling": {[2]int{16, 36}, [2]float64{0.12, 0.19}, 0, 0.9, 1},
 	"walker":    {[2]int{2, 6}, [2]float64{2.2, 3.2}, 1, 1.5, 0.9},
 	"drone":     {[2]int{1, 4}, [2]float64{3, 4.5}, 2, 1.6, 0.75},
 	"beetle":    {[2]int{4, 10}, [2]float64{1.1, 1.5}, 1, 1.2, 0.75},
 	"splitter":  {[2]int{3, 8}, [2]float64{1.3, 1.8}, 1, 1.5, 0.9},
-	"stinger":   {[2]int{6, 14}, [2]float64{0.45, 0.7}, 2, 1.4, 1},
+	"stinger":   {[2]int{6, 14}, [2]float64{0.25, 0.3}, 2, 1.4, 1},
 }
 
 func expWeight(d *EnemyDef) float64 {

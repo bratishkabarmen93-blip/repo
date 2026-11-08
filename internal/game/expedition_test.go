@@ -534,3 +534,107 @@ func TestExpeditionBalance(t *testing.T) {
 		}
 	}
 }
+
+// Pack bugs keep the campaign's tight spacing: splash turrets (Skyguard
+// missiles against Stingers, Flamers against Swarmlings) are meant to hit
+// several of them at once.
+func TestExpeditionPacks(t *testing.T) {
+	camp := expCampaign()
+	for _, id := range []string{"swarmling", "stinger"} {
+		var gaps []float64
+		for _, s := range camp {
+			for _, wv := range s.Waves {
+				for _, g := range wv.Groups {
+					if g.Enemy == id && g.Count >= 4 {
+						gaps = append(gaps, g.Interval)
+					}
+				}
+			}
+		}
+		if len(gaps) == 0 {
+			t.Fatalf("the campaign has no %s packs", id)
+		}
+		sort.Float64s(gaps)
+		med := gaps[len(gaps)/2]
+		lo, hi := 0.7*med, 1.3*med
+		n := 0
+		for k := 1; k <= len(camp); k++ {
+			know := expKnow(k)
+			for seed := int64(1); seed <= 40; seed++ {
+				for wi, wv := range NewExpedition(seed, know).Spec.Waves {
+					for _, g := range wv.Groups {
+						if g.Enemy != id {
+							continue
+						}
+						n++
+						if g.Interval < lo || g.Interval > hi {
+							t.Errorf("after %s, seed %d, wave %d: %d %s %.2fs apart, the campaign's usual is %.2fs",
+								camp[k-1].ID, seed, wi+1, g.Count, id, g.Interval, med)
+						}
+					}
+				}
+			}
+		}
+		t.Logf("%s: campaign median %.2fs apart, %d expedition groups checked", id, med, n)
+	}
+}
+
+// One top-level Skyguard against a pack of 14 Stingers on Stinger Ridge, from
+// every pad that sees enough of the road: the campaign's tight spacing lets
+// its splash missiles take several at once.
+func TestExpeditionSkyguardPack(t *testing.T) {
+	var src *LevelSpec
+	for _, s := range expCampaign() {
+		if s.ID == "2-5" {
+			src = s
+		}
+	}
+	if src == nil {
+		t.Fatal("no level 2-5")
+	}
+	top := len(Skyguard.Levels) - 1
+	reach := Skyguard.Levels[top].Range
+	// shot is how many of the 14 one Skyguard shoots down on average.
+	shot := func(gaps []float64) (float64, int) {
+		sum, runs, pads := 0, 0, 0
+		for _, gap := range gaps {
+			spec := *src
+			spec.BaseHP = 100000
+			spec.Waves = []WaveSpec{{Groups: []Group{g("stinger", 14, gap, 0, 1)}}}
+			l, err := ParseLevel(&spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pads = 0
+			for slot, c := range l.Slots {
+				if l.Path.Coverage(c.Center(), reach) < 4 {
+					continue
+				}
+				pads++
+				for seed := int64(1); seed <= 3; seed++ {
+					w := NewWorld(l, seed)
+					if w.PlaceTower(slot, Skyguard, top) == nil {
+						t.Fatal("cannot place the Skyguard")
+					}
+					w.SkipTimer()
+					for i := 0; i < 60*120 && w.Active(); i++ {
+						w.Update(1.0 / 60)
+					}
+					sum += w.Kills
+					runs++
+				}
+			}
+		}
+		if runs == 0 {
+			t.Fatal("no pad sees the road")
+		}
+		return float64(sum) / float64(runs), pads
+	}
+	loose, pads := shot([]float64{0.45, 0.5, 0.55, 0.6, 0.65, 0.7})
+	tight, _ := shot([]float64{0.25, 0.26, 0.27, 0.28, 0.29, 0.3})
+	t.Logf("14 stingers against one top Skyguard (%d pads): %.1f shot down on average 0.45-0.7s apart (v0.15.0), %.1f 0.25-0.3s apart (the campaign's, v0.15.1)",
+		pads, loose, tight)
+	if tight <= loose {
+		t.Errorf("a tight pack should lose more stingers to splash: %.1f against %.1f", tight, loose)
+	}
+}

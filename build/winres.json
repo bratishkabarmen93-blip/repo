@@ -7,7 +7,7 @@
   "RT_MANIFEST": {
     "#1": {
       "0409": {
-        "identity": {"name": "OutpostDefense", "version": "0.15.0.0"},
+        "identity": {"name": "OutpostDefense", "version": "0.15.1.0"},
         "description": "Outpost Defense",
         "minimum-os": "win10",
         "execution-level": "as invoker",
@@ -29,14 +29,14 @@
   "RT_VERSION": {
     "#1": {
       "0000": {
-        "fixed": {"file_version": "0.15.0.0", "product_version": "0.15.0.0"},
+        "fixed": {"file_version": "0.15.1.0", "product_version": "0.15.1.0"},
         "info": {
           "0409": {
             "FileDescription": "Outpost Defense",
-            "FileVersion": "0.15.0",
+            "FileVersion": "0.15.1",
             "OriginalFilename": "OutpostDefense.exe",
             "ProductName": "Outpost Defense",
-            "ProductVersion": "0.15.0 (Expeditions)"
+            "ProductVersion": "0.15.1 (Expeditions)"
           }
         }
       }
