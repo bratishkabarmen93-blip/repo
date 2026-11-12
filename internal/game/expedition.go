@@ -274,19 +274,22 @@ type expKind struct {
 	From  int        // the first wave it may come in (0-based)
 	W     float64    // how hard a hit point of it is to stop
 	Tough float64    // its hit point multiplier against the others'
+	// Floor: its hit points at least this share of its usual toughness; a thin
+	// budget sends fewer of them rather than weaker ones (0: the common floor).
+	Floor float64
 }
 
 var expKinds = map[string]expKind{
-	"crawler":   {[2]int{6, 14}, [2]float64{0.6, 0.9}, 0, 1, 1},
-	"runner":    {[2]int{6, 14}, [2]float64{0.35, 0.5}, 0, 1.25, 1},
-	"swarmling": {[2]int{16, 36}, [2]float64{0.12, 0.19}, 0, 0.9, 1},
-	"walker":    {[2]int{2, 6}, [2]float64{2.2, 3.2}, 1, 1.5, 0.9},
-	"drone":     {[2]int{1, 4}, [2]float64{3, 4.5}, 2, 1.6, 0.75},
-	"beetle":    {[2]int{4, 10}, [2]float64{1.1, 1.5}, 1, 1.2, 0.75},
-	"splitter":  {[2]int{3, 8}, [2]float64{1.3, 1.8}, 1, 1.5, 0.9},
-	"stinger":   {[2]int{6, 14}, [2]float64{0.25, 0.3}, 2, 1.4, 1},
-	"bloater":   {[2]int{3, 8}, [2]float64{1.8, 3}, 1, 1.2, 0.9},
-	"stalker":   {[2]int{4, 12}, [2]float64{0.7, 1.4}, 1, 1.5, 1},
+	"crawler":   {[2]int{6, 14}, [2]float64{0.6, 0.9}, 0, 1, 1, 0},
+	"runner":    {[2]int{6, 14}, [2]float64{0.35, 0.5}, 0, 1.25, 1, 0},
+	"swarmling": {[2]int{16, 36}, [2]float64{0.12, 0.19}, 0, 0.9, 1, 0},
+	"walker":    {[2]int{2, 6}, [2]float64{2.2, 3.2}, 1, 1.5, 0.9, 0.85},
+	"drone":     {[2]int{1, 4}, [2]float64{3, 4.5}, 2, 1.6, 0.75, 0},
+	"beetle":    {[2]int{4, 10}, [2]float64{1.1, 1.5}, 1, 1.2, 0.75, 0},
+	"splitter":  {[2]int{3, 8}, [2]float64{1.3, 1.8}, 1, 1.5, 0.9, 0},
+	"stinger":   {[2]int{6, 14}, [2]float64{0.25, 0.3}, 2, 1.4, 1, 0},
+	"bloater":   {[2]int{3, 8}, [2]float64{1.8, 3}, 1, 1.2, 0.9, 0},
+	"stalker":   {[2]int{4, 12}, [2]float64{0.7, 1.4}, 1, 1.5, 1, 0},
 }
 
 func expWeight(d *EnemyDef) float64 {
@@ -781,11 +784,15 @@ func expWaves(r *rand.Rand, pool []*EnemyDef, th expTheme, boss *EnemyDef, n, en
 			// group grows, within reason.
 			cnt := expLerp(float64(kd.Cnt[0]), float64(kd.Cnt[1]), 0.25+0.75*t) * (0.8 + 0.4*r.Float64())
 			hmax := math.Max(1.2, 1.25*tough(t)*kd.Tough)
+			hmin, minCnt := 0.6, math.Max(1, float64(kd.Cnt[0])/2)
+			if kd.Floor > 0 {
+				hmin, minCnt = math.Max(hmin, kd.Floor*tough(t)*kd.Tough), 1
+			}
 			switch hm := gb / (cnt * unit); {
 			case hm > hmax:
 				cnt = math.Min(gb/(unit*hmax), float64(kd.Cnt[1])*1.6)
-			case hm < 0.6:
-				cnt = math.Max(gb/(unit*0.6), math.Max(1, float64(kd.Cnt[0])/2))
+			case hm < hmin:
+				cnt = math.Max(gb/(unit*hmin), minCnt)
 			}
 			c := max(1, int(math.Round(cnt)))
 			hm := math.Max(0.5, gb/(float64(c)*unit))
