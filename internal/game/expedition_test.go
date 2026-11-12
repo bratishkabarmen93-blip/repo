@@ -769,3 +769,79 @@ func TestExpeditionWalkers(t *testing.T) {
 		}
 	}
 }
+
+// An order is met in every part the player can pick, and an empty one changes
+// nothing: the expeditions on offer stay what they were.
+func TestExpeditionOrder(t *testing.T) {
+	camp := expCampaign()
+	seeds := int64(12)
+	if testing.Short() {
+		seeds = 3
+	}
+	for n := 1; n <= len(camp); n++ {
+		k := expKnow(n)
+		for seed := int64(1); seed <= seeds; seed++ {
+			where := fmt.Sprintf("after %s, seed %d", camp[n-1].ID, seed)
+			if a, b := NewExpedition(seed, k), OrderExpedition(seed, k, ExpOrder{}); !reflect.DeepEqual(a.Spec, b.Spec) {
+				t.Fatalf("%s: an empty order changes the expedition", where)
+			}
+			for _, world := range append([]string{""}, ExpWorlds(k)...) {
+				for _, theme := range append([]string{""}, ExpThemes(k, world)...) {
+					for tier := Tier(0); tier <= TierHigh; tier++ {
+						o := ExpOrder{Tier: tier, World: world, Theme: theme}
+						e := OrderExpedition(seed, k, o)
+						if _, err := ParseLevel(e.Spec); err != nil {
+							t.Fatalf("%s, order %s: %v", where, o.Key(), err)
+						}
+						if world != "" && e.World != world {
+							t.Errorf("%s, order %s: lands on %s", where, o.Key(), e.World)
+						}
+						if theme != "" && e.Theme != theme {
+							t.Errorf("%s, order %s: the attack is %s", where, o.Key(), e.Theme)
+						}
+						if tier != 0 && e.Spec.Tier != tier {
+							t.Errorf("%s, order %s: the threat is %s", where, o.Key(), e.Spec.Tier)
+						}
+					}
+				}
+			}
+		}
+	}
+	if c := (ExpOrder{Tier: TierHigh, World: "Mars", Theme: "Swarm"}).Cost(); c != OrderTierCost+OrderWorldCost+OrderThemeCost {
+		t.Errorf("a full order costs %d", c)
+	}
+	// What cannot be met is rolled, never a crash: Ambush needs Titan's stalkers.
+	if e := OrderExpedition(1, expKnow(len(camp)), ExpOrder{World: "Mars", Theme: "Ambush"}); e.World != "Mars" {
+		t.Errorf("Mars with an Ambush lands on %s", e.World)
+	}
+	if e := OrderExpedition(1, expKnow(1), ExpOrder{Tier: 9, World: "Titan", Theme: "Ambush"}); e.Spec == nil {
+		t.Error("an order from a save the player has not earned gives no expedition")
+	}
+}
+
+func TestSupplies(t *testing.T) {
+	s := NewExpedition(7, expKnow(8)).Spec
+	if s.Supplied(nil) != s || s.Supplied([]string{"?"}) != s {
+		t.Error("no supplies should leave the level as it is")
+	}
+	c := s.Supplied([]string{SupplyCredits.ID})
+	if c.StartCredits <= s.StartCredits || c.StartCredits%10 != 0 || c.BaseHP != s.BaseHP {
+		t.Errorf("extra credits: %d credits and a base of %d, from %d and %d", c.StartCredits, c.BaseHP, s.StartCredits, s.BaseHP)
+	}
+	b := s.Supplied([]string{SupplyBase.ID, SupplyCredits.ID})
+	if b.BaseHP != s.BaseHP*3/2 || b.StartCredits != c.StartCredits {
+		t.Errorf("both supplies: %d credits and a base of %d, from %d and %d", b.StartCredits, b.BaseHP, s.StartCredits, s.BaseHP)
+	}
+	l, err := ParseLevel(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := NewWorld(l, 1); w.Credits != b.StartCredits || w.BaseHP != b.BaseHP || w.BaseMaxHP != b.BaseHP {
+		t.Errorf("the battle starts with %d credits and a base of %d/%d", w.Credits, w.BaseHP, w.BaseMaxHP)
+	}
+	for _, sp := range Supplies {
+		if SupplyByID(sp.ID) != sp || sp.Cost <= 0 {
+			t.Errorf("supply %s is not listed right", sp.ID)
+		}
+	}
+}

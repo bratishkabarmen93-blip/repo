@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"log"
 	"math/rand"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -19,8 +20,9 @@ import (
 // shown the player (internal/game/expedition.go): only the worlds, turrets,
 // abilities and enemies met so far. One is on offer at a time. Its seed is
 // kept in the save, so it stays the same until it is won (the next one is
-// new) or swapped for a new one after a defeat. There is no free reroll: the
-// player does not get to pick what the expedition brings.
+// new) or swapped for a new one after a defeat. There is no free reroll: what
+// the expedition brings is picked only for crystals, as an order, and crystals
+// also pack supplies for it (see the prepare window below).
 
 // expAbout tells what the expeditions are, on their locked card.
 const expAbout = "Every expedition is a new battle made up from what you have met in the campaign: its worlds, turrets and enemies. Its stars pay more crystals than a replay."
@@ -65,14 +67,16 @@ func (a *App) knowledge() game.Knowledge {
 func (a *App) expedition() *game.Expedition {
 	k := a.knowledge()
 	for try := 0; try < 5; try++ {
-		if a.save.Exp.Seed == 0 || try > 0 {
-			a.rollExpedition()
+		x := &a.save.Exp
+		if x.Seed == 0 || try > 0 {
+			a.offerExpedition(x.Order)
 		}
-		key := fmt.Sprintf("%d %s", a.save.Exp.Seed, k.Key())
+		key := fmt.Sprintf("%d %s %s %s", x.Seed, x.Order.Key(), strings.Join(x.Supplies, ","), k.Key())
 		if a.exp != nil && a.expKey == key {
 			return a.exp
 		}
-		e := game.NewExpedition(a.save.Exp.Seed, k)
+		e := game.OrderExpedition(x.Seed, k, x.Order)
+		e.Spec = e.Spec.Supplied(x.Supplies)
 		l, err := game.ParseLevel(e.Spec)
 		if err != nil {
 			log.Printf("expedition %d: %v", a.save.Exp.Seed, err)
@@ -87,10 +91,14 @@ func (a *App) expedition() *game.Expedition {
 	return nil
 }
 
-// rollExpedition puts a new expedition on offer.
-func (a *App) rollExpedition() {
+// rollExpedition puts a new expedition on offer, rolled in full.
+func (a *App) rollExpedition() { a.offerExpedition(game.ExpOrder{}) }
+
+// offerExpedition puts a new expedition on offer, as ordered.
+func (a *App) offerExpedition(o game.ExpOrder) {
 	a.save.Exp.Seed = 1 + rand.Int63n(999_999)
 	a.save.Exp.Count++
+	a.save.Exp.Order = o
 	a.save.store()
 	a.exp = nil
 }
@@ -105,6 +113,7 @@ func (a *App) startExpedition() {
 // swapExpedition gives up the expedition on offer (after a defeat) and
 // launches a new one.
 func (a *App) swapExpedition() {
+	a.save.Exp.Supplies = nil // they went with the lost battle
 	a.rollExpedition()
 	a.startExpedition()
 }
@@ -126,6 +135,7 @@ func (a *App) recordExpedition() {
 		a.save.Close = true
 	}
 	a.save.Exp.Won++
+	a.save.Exp.Supplies = nil
 	a.rollExpedition() // stores the save
 	a.res.trophies = a.save.claimTrophies()
 }
@@ -153,6 +163,9 @@ func (a *App) drawExpeditionDetail(dst *ebiten.Image, cl chaptersLayout) {
 	r := cl.detail
 	a.panel(dst, r, 1)
 	a.drawButton(dst, cl.open, 1)
+	if cl.prep.ID != "" {
+		a.drawButton(dst, cl.prep, 1)
+	}
 	x, w := r.X+8*u, r.W-16*u
 	y := r.Y + 8*u
 	var e *game.Expedition
@@ -226,6 +239,19 @@ func (a *App) drawExpeditionDetail(dst *ebiten.Image, cl chaptersLayout) {
 		{"@", art.Yellow}, {fmt.Sprint(s.StartCredits), art.Yellow}}
 	a.drawSegsIcons(dst, segs, x, y, u, 1)
 	y += 13 * u
+	var packed []string
+	for _, sp := range game.Supplies {
+		if a.packed(sp) {
+			packed = append(packed, strings.ToLower(sp.Name))
+		}
+	}
+	if len(packed) > 0 {
+		for _, l := range a.wrap("Supplies: "+strings.Join(packed, ", "), w, u) {
+			a.drawText(dst, l, x, y, u, art.Lime, 1)
+			y += 11 * u
+		}
+		y += 2 * u
+	}
 	if e.Boss != nil {
 		a.drawSegs(dst, []Seg{{"Boss ", art.Gray}, {e.Boss.Name, art.Red}}, x, y, u, 1)
 		y += 13 * u
@@ -252,4 +278,137 @@ func (a *App) drawExpeditionDetail(dst *ebiten.Image, cl chaptersLayout) {
 		fillRect(dst, pr.X, pr.Y, pr.W, pr.H, bgColor)
 		a.drawLevelPic(dst, s, pr, ebiten.ColorScale{})
 	}
+}
+
+// ---- Crystals for expeditions: supplies and orders ----
+//
+// The prepare window of the expedition card spends crystals in two ways.
+// Supplies help in the expedition on offer: they stay packed through its
+// retries, until it is won or given up. An order replaces the expedition on
+// offer with one of the threat, world or attack the player picks.
+
+// packed reports whether a supply is packed for the expedition on offer.
+func (a *App) packed(sp *game.Supply) bool { return slices.Contains(a.save.Exp.Supplies, sp.ID) }
+
+// buySupply packs a supply for the expedition on offer.
+func (a *App) buySupply(id string) {
+	sp := game.SupplyByID(id)
+	if sp == nil || a.packed(sp) || a.save.Crystals < sp.Cost {
+		return
+	}
+	a.save.Crystals -= sp.Cost
+	a.save.Exp.Supplies = append(a.save.Exp.Supplies, sp.ID)
+	a.save.store()
+}
+
+// nextChoice is the choice after cur: "" (any) comes after the last one.
+func nextChoice(all []string, cur string) string {
+	if i := slices.Index(all, cur) + 1; i < len(all) {
+		return all[i]
+	}
+	return ""
+}
+
+// cycleOrder moves one part of the order being put together to its next choice.
+func (a *App) cycleOrder(part string) {
+	k := a.knowledge()
+	switch part {
+	case "tier":
+		a.ord.Tier = (a.ord.Tier + 1) % (game.TierHigh + 1)
+	case "world":
+		a.ord.World = nextChoice(game.ExpWorlds(k), a.ord.World)
+		// Not every attack comes on every world.
+		if !slices.Contains(game.ExpThemes(k, a.ord.World), a.ord.Theme) {
+			a.ord.Theme = ""
+		}
+	case "theme":
+		a.ord.Theme = nextChoice(game.ExpThemes(k, a.ord.World), a.ord.Theme)
+	}
+}
+
+// placeOrder pays for the order and puts the expedition it asks for on offer.
+func (a *App) placeOrder() {
+	cost := a.ord.Cost()
+	if cost == 0 || a.save.Crystals < cost {
+		return
+	}
+	a.save.Crystals -= cost
+	a.offerExpedition(a.ord) // stores the save
+	a.closePanel()
+}
+
+// openPrepare opens the prepare window of the expedition on offer.
+func (a *App) openPrepare() {
+	if a.scr != scrChapters || a.chap != expCard() || !a.expOpen() {
+		return
+	}
+	a.ord = game.ExpOrder{}
+	a.openPanel(panelPrepare)
+}
+
+func (a *App) prepareColumn() column {
+	u := a.u
+	k := a.knowledge()
+	have := a.save.Crystals
+	// A button that may be out of reach: btnRow would enable it.
+	buy := func(b Button) row { return row{kind: rowButton, btn: b, h: 16 * u} }
+	anyOr := func(s string) string {
+		if s == "" {
+			return "Any"
+		}
+		return s
+	}
+	rows := []row{
+		a.textRow("Prepare the expedition", 2*u, art.White),
+		a.gapRow(2),
+		a.segRow([]Seg{{"You have ", art.Silver}, {"◆", art.Pink}, {fmt.Sprintf(" %d", have), art.White}}),
+		a.gapRow(6),
+		a.textRow("Supplies for this expedition", u, art.Lime),
+		a.gapRow(1),
+	}
+	bw := 0
+	for _, sp := range game.Supplies {
+		b := Button{ID: "sup:" + sp.ID, Label: sp.Name + ": " + sp.Desc, Cost: sp.Cost, CostIcon: "crystal", Enabled: have >= sp.Cost}
+		bw = max(bw, a.buttonWidth(b)) // the window keeps its width once they are packed
+		if a.packed(sp) {
+			b.Label, b.Cost, b.Enabled = sp.Name+": packed", 0, false
+		}
+		rows = append(rows, buy(b))
+	}
+	rows = append(rows,
+		a.textRow("They stay packed until it is won or given up.", u, art.Gray),
+		a.gapRow(6),
+		a.textRow("Order another expedition", u, art.Lime),
+		a.gapRow(1))
+	tier := "Any"
+	if a.ord.Tier != 0 {
+		tier = a.ord.Tier.String()
+	}
+	price := func(name string, n int) []Seg {
+		return []Seg{{name + " ", art.Gray}, {"◆", art.Pink}, {fmt.Sprintf(" %d   ", n), art.Silver}}
+	}
+	prices := price("Threat", game.OrderTierCost)
+	rows = append(rows, a.btnRow(Button{ID: "ord:tier", Label: "Threat: " + tier}))
+	if len(game.ExpWorlds(k)) > 1 {
+		rows = append(rows, a.btnRow(Button{ID: "ord:world", Label: "World: " + anyOr(a.ord.World)}))
+		prices = append(prices, price("World", game.OrderWorldCost)...)
+	}
+	if len(game.ExpThemes(k, a.ord.World)) > 1 {
+		rows = append(rows, a.btnRow(Button{ID: "ord:theme", Label: "Attack: " + anyOr(a.ord.Theme)}))
+		prices = append(prices, price("Attack", game.OrderThemeCost)...)
+	}
+	cost := a.ord.Cost()
+	rows = append(rows,
+		a.segRow(prices),
+		a.gapRow(1),
+		buy(Button{ID: "order", Label: "Order", Cost: cost, CostIcon: "crystal", Primary: true, Enabled: cost > 0 && have >= cost}),
+		a.textRow("It replaces the one on offer. The supplies come along.", u, art.Gray),
+		a.gapRow(6),
+		a.btnRow(Button{ID: "close", Label: "Back", Key: "Esc"}))
+	for _, r := range rows {
+		if r.kind == rowButton {
+			bw = max(bw, a.buttonWidth(r.btn))
+		}
+	}
+	return a.layoutColumn(rows, 0, max(bw, 150*u))
 }

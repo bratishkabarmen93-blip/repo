@@ -432,10 +432,111 @@ func expPool(k Knowledge, w *expWorld) []*EnemyDef {
 
 // newExpedition builds an expedition; a tier of 0 rolls one.
 func newExpedition(seed int64, k Knowledge, tier Tier) *Expedition {
+	return OrderExpedition(seed, k, ExpOrder{Tier: tier})
+}
+
+// ---- Orders ----
+
+// ExpOrder is what the player asks of an expedition, for crystals. What it
+// leaves open (the zero values) is rolled as usual.
+type ExpOrder struct {
+	Tier  Tier   `json:"tier,omitempty"`
+	World string `json:"world,omitempty"`
+	Theme string `json:"theme,omitempty"`
+}
+
+// The crystals each part of an order costs. A High threat pays 3 crystals a
+// star more than a Medium one: the order pays for itself only when played well.
+const (
+	OrderTierCost  = 8
+	OrderWorldCost = 4
+	OrderThemeCost = 4
+)
+
+// Cost is the price of the order in crystals.
+func (o ExpOrder) Cost() int {
+	n := 0
+	if o.Tier != 0 {
+		n += OrderTierCost
+	}
+	if o.World != "" {
+		n += OrderWorldCost
+	}
+	if o.Theme != "" {
+		n += OrderThemeCost
+	}
+	return n
+}
+
+// Key tells two orders apart.
+func (o ExpOrder) Key() string { return fmt.Sprintf("%d/%s/%s", o.Tier, o.World, o.Theme) }
+
+// worlds lists the worlds that meet the order. A part of it that no known
+// world meets is dropped, so that there is always one to land on.
+func (o ExpOrder) worlds(k Knowledge) []*expWorld {
+	ws := expWorlds(k)
+	keep := func(ok func(*expWorld) bool) {
+		var out []*expWorld
+		for _, w := range ws {
+			if ok(w) {
+				out = append(out, w)
+			}
+		}
+		if len(out) > 0 {
+			ws = out
+		}
+	}
+	if o.World != "" {
+		keep(func(w *expWorld) bool { return w.Name == o.World })
+	}
+	if o.Theme != "" {
+		keep(func(w *expWorld) bool { return slices.Contains(expThemesOn(k, w), o.Theme) })
+	}
+	return ws
+}
+
+// expThemesOn names the kinds of attack the enemies of a world can make.
+func expThemesOn(k Knowledge, w *expWorld) []string {
+	var out []string
+	pool := expPool(k, w)
+	for _, th := range expThemes() {
+		if th.fits(pool) {
+			out = append(out, th.Name)
+		}
+	}
+	return out
+}
+
+// ExpWorlds names the worlds an expedition can be ordered to.
+func ExpWorlds(k Knowledge) []string {
+	var out []string
+	for _, w := range expWorlds(k) {
+		out = append(out, w.Name)
+	}
+	return out
+}
+
+// ExpThemes names the kinds of attack that can be ordered on a world, or on
+// any known world when it is "".
+func ExpThemes(k Knowledge, world string) []string {
+	ws := (ExpOrder{World: world}).worlds(k)
+	var out []string
+	for _, th := range expThemes() {
+		if slices.ContainsFunc(ws, func(w *expWorld) bool { return th.fits(expPool(k, w)) }) {
+			out = append(out, th.Name)
+		}
+	}
+	return out
+}
+
+// OrderExpedition builds the expedition of a seed as ordered. With an empty
+// order it is the one NewExpedition gives.
+func OrderExpedition(seed int64, k Knowledge, o ExpOrder) *Expedition {
 	r := rand.New(rand.NewSource(seed))
-	worlds := expWorlds(k)
+	worlds := o.worlds(k)
 	w := worlds[r.Intn(len(worlds))]
-	if tier == 0 {
+	tier := o.Tier
+	if tier < TierLow || tier > TierHigh {
 		tier = expRollTier(r)
 	}
 	e := &Expedition{Seed: seed, World: w.Name}
@@ -448,6 +549,9 @@ func newExpedition(seed int64, k Knowledge, tier Tier) *Expedition {
 		if th.fits(pool) {
 			themes = append(themes, th)
 		}
+	}
+	if i := slices.IndexFunc(themes, func(th expTheme) bool { return th.Name == o.Theme }); i >= 0 {
+		themes = themes[i : i+1]
 	}
 	th := themes[r.Intn(len(themes))]
 	layouts := k.layouts()

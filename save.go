@@ -40,6 +40,10 @@ type ExpSave struct {
 	Seed  int64 `json:"seed,omitempty"`  // the expedition on offer (0: none yet)
 	Count int   `json:"count,omitempty"` // expeditions put on offer so far
 	Won   int   `json:"won,omitempty"`   // expeditions won
+	// Bought with crystals: what was asked of the one on offer, and
+	// the supplies packed for it. They last until it is won or given up.
+	Order    game.ExpOrder `json:"order,omitzero"`
+	Supplies []string      `json:"supplies,omitempty"`
 }
 
 func loadSave() *Save {
@@ -157,6 +161,7 @@ func (s *Save) reset() {
 	s.Kills = map[string]int{}
 	s.Wins, s.Supers, s.Flawless, s.Close = 0, nil, false, false
 	s.Trophies = map[string]bool{}
+	s.Exp.Order, s.Exp.Supplies = game.ExpOrder{}, nil // bought with the crystals that are gone
 	s.store()
 }
 
