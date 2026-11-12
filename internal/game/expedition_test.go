@@ -743,3 +743,29 @@ func TestExpeditionFlocks(t *testing.T) {
 		}
 	}
 }
+
+// Walkers come in few, tough robots as in the campaign: a thin share of the
+// budget sends fewer of them, not a crowd that melts under light fire.
+func TestExpeditionWalkers(t *testing.T) {
+	camp := expCampaign()
+	for n := 1; n <= len(camp); n++ {
+		k := expKnow(n)
+		var hm []float64
+		for seed := int64(1); seed <= 120; seed++ {
+			for _, wv := range NewExpedition(seed, k).Spec.Waves {
+				for _, g := range wv.Groups {
+					if g.Enemy == Walker.ID {
+						hm = append(hm, g.HPMul)
+					}
+				}
+			}
+		}
+		if len(hm) < 20 {
+			continue
+		}
+		sort.Float64s(hm)
+		if med := hm[len(hm)/2]; med < 1.1 {
+			t.Errorf("after %s: walkers at a median %.2fx hit points, the campaign's are 1.5-2.5x", camp[n-1].ID, med)
+		}
+	}
+}
