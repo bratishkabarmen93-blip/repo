@@ -58,15 +58,29 @@ func TestExpeditionValid(t *testing.T) {
 					t.Errorf("%s: enemy %s is not known yet", where, d.ID)
 				case d.Flying && !k.hasTurret(Skyguard):
 					t.Errorf("%s: %s flies, but there is no Skyguard", where, d.ID)
+				case d.Stealth && !k.hasTurret(Beacon):
+					t.Errorf("%s: %s hides in the fog, but there is no Beacon", where, d.ID)
+				case (d == Bloater || d == Stalker) && e.World != "Titan":
+					t.Errorf("%s: %s off Titan, on %s", where, d.ID, e.World)
 				case d.Boss && d != e.Boss:
 					t.Errorf("%s: stray boss %s", where, d.ID)
 				}
 			}
-			if e.Boss != nil && (e.Boss == Queen) != (e.World == "Mars") {
+			if e.Boss != nil && map[string]*EnemyDef{"Mars": Queen, "Europa": Wyrm, "Titan": Kraken}[e.World] != e.Boss {
 				t.Errorf("%s: %s on %s", where, e.Boss.ID, e.World)
 			}
 			if e.World == "Europa" && !k.Europa || (s.Biome == "ice") != (e.World == "Europa") {
 				t.Errorf("%s: world %s, biome %q", where, e.World, s.Biome)
+			}
+			if e.World == "Titan" && !k.Titan || (s.Biome == "titan") != (e.World == "Titan") || (len(s.Fog) >= 2) != (e.World == "Titan") {
+				t.Errorf("%s: world %s, biome %q, %d fog banks", where, e.World, s.Biome, len(s.Fog))
+			}
+			for _, b := range s.Fog {
+				for _, p := range b.Stops {
+					if len(b.Stops) < 2 || b.R < 1.5 || p.X < 0 || p.Y < 0 || p.X > float64(len(s.Map[0])) || p.Y > float64(len(s.Map)) {
+						t.Errorf("%s: fog bank %+v off the map", where, b)
+					}
+				}
 			}
 			if l.Entrances() > k.Entrances || l.EastGate() && !k.Fronts {
 				t.Errorf("%s: %d entrances (east gate %v) is more than known", where, l.Entrances(), l.EastGate())
@@ -266,6 +280,10 @@ func TestExpeditionDebug(t *testing.T) {
 // expCasual is the casual bot of an expedition: on a map whose roads never
 // meet it defends each road, as a player who sees both would.
 func expCasual(l *Level, seed int64, types []*TowerDef) bot {
+	// Without fog to clear, a casual player builds no Beacons.
+	if len(l.Spec.Fog) == 0 {
+		types = slices.DeleteFunc(slices.Clone(types), func(d *TowerDef) bool { return d == Beacon })
+	}
 	if l.EastGate() {
 		return expSplitBot(l, rand.New(rand.NewSource(seed)), types)
 	}
@@ -636,5 +654,92 @@ func TestExpeditionSkyguardPack(t *testing.T) {
 		pads, loose, tight)
 	if tight <= loose {
 		t.Errorf("a tight pack should lose more stingers to splash: %.1f against %.1f", tight, loose)
+	}
+}
+
+// Titan joins the expeditions once its fog has been met: methane fog over
+// every map of it (clear of the base), its own bugs once known and, once
+// beaten, the Kraken in the last wave.
+func TestExpeditionTitan(t *testing.T) {
+	for _, c := range []struct {
+		n             int
+		titan, beacon bool
+		kraken        bool
+	}{{14, false, false, false}, {15, true, false, false}, {16, true, true, false}, {21, true, true, true}} {
+		k := expKnow(c.n)
+		if k.Titan != c.titan || k.hasTurret(Beacon) != c.beacon {
+			t.Fatalf("stage %d: Titan %v, Beacon %v", c.n, k.Titan, k.hasTurret(Beacon))
+		}
+		seen := map[string]int{}
+		for seed := int64(1); seed <= 120; seed++ {
+			e := NewExpedition(seed, k)
+			seen[e.World]++
+			if e.World != "Titan" {
+				continue
+			}
+			if n := len(e.Spec.Fog); n < 2 || n > 4 {
+				t.Errorf("stage %d, seed %d: %d fog banks", c.n, seed, n)
+			}
+			var base Vec
+			nb := 0.0
+			for y, row := range e.Spec.Map {
+				for x, ch := range row {
+					if ch == 'B' {
+						base, nb = base.Add(Vec{float64(x) + 0.5, float64(y) + 0.5}), nb+1
+					}
+				}
+			}
+			base = base.Mul(1 / nb)
+			for _, b := range e.Spec.Fog {
+				for _, p := range b.Stops {
+					if p.Dist(base) < 3.4 {
+						t.Errorf("stage %d, seed %d: fog rests on the base at %v", c.n, seed, p)
+					}
+				}
+			}
+			if e.Boss == Kraken {
+				seen["kraken"]++
+			}
+			seen["theme "+e.Theme]++
+			for _, d := range e.Spec.Enemies() {
+				seen[d.ID]++
+			}
+		}
+		t.Logf("after %s: %v", expCampaign()[c.n-1].ID, seen)
+		if (seen["Titan"] > 0) != c.titan || (seen["kraken"] > 0) != c.kraken {
+			t.Errorf("stage %d: %d Titan expeditions, %d with the Kraken", c.n, seen["Titan"], seen["kraken"])
+		}
+		if c.n == 21 && (seen["stalker"] == 0 || seen["bloater"] == 0 || seen["theme Ambush"] == 0) {
+			t.Errorf("after 3-7 Titan's own bugs should come: %v", seen)
+		}
+	}
+}
+
+// Only Skyguards answer flyers: a flock that cannot grow any more does not
+// turn into a wall of hit points either (v0.15.1 sent stingers at 5.9x).
+func TestExpeditionFlocks(t *testing.T) {
+	camp := expCampaign()
+	top := map[string]float64{}
+	for _, s := range camp {
+		for _, wv := range s.Waves {
+			for _, g := range wv.Groups {
+				top[g.Enemy] = max(top[g.Enemy], g.HPMul)
+			}
+		}
+	}
+	for n := 1; n <= len(camp); n++ {
+		k := expKnow(n)
+		for seed := int64(1); seed <= 60; seed++ {
+			for tier := TierLow; tier <= TierHigh; tier++ {
+				for wi, wv := range newExpedition(seed, k, tier).Spec.Waves {
+					for _, g := range wv.Groups {
+						if EnemyDefs[g.Enemy].Flying && g.HPMul > 2.25*top[g.Enemy] {
+							t.Errorf("after %s, seed %d, %s, wave %d: %d %s at %.2fx, the campaign's toughest are %.2fx",
+								camp[n-1].ID, seed, tier, wi+1, g.Count, g.Enemy, g.HPMul, top[g.Enemy])
+						}
+					}
+				}
+			}
+		}
 	}
 }

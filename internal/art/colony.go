@@ -106,8 +106,11 @@ func kind(b *game.Building) string {
 func BuildingScene(b *game.Building, stage int) *Scene {
 	switch kind(b) {
 	case "habitat":
-		if strings.HasPrefix(b.ID, "europa.") {
+		switch {
+		case strings.HasPrefix(b.ID, "europa."):
 			return polarHabitatScene(stage)
+		case strings.HasPrefix(b.ID, "titan."):
+			return duneHabitatScene(stage)
 		}
 		return habitatScene(stage)
 	case "solar":
@@ -121,8 +124,11 @@ func BuildingScene(b *game.Building, stage int) *Scene {
 	case "pad":
 		return landingPadScene(stage)
 	case "monument":
-		if strings.HasPrefix(b.ID, "europa.") {
+		switch {
+		case strings.HasPrefix(b.ID, "europa."):
 			return wyrmMonumentScene()
+		case strings.HasPrefix(b.ID, "titan."):
+			return krakenMonumentScene()
 		}
 		return monumentScene()
 	case "drill":
@@ -131,6 +137,12 @@ func BuildingScene(b *game.Building, stage int) *Scene {
 		return researchLabScene(stage)
 	case "thermal":
 		return thermalPlantScene(stage)
+	case "refinery":
+		return methaneRefineryScene(stage)
+	case "lighthouse":
+		return fogLighthouseScene(stage)
+	case "airship":
+		return airshipDockScene(stage)
 	}
 	return &Scene{}
 }
@@ -205,6 +217,8 @@ func Effects(loc *game.Location, b *game.Building, stage int) BuildingFX {
 			fx.Red = append(fx.Red, V3{34, -36, 37})
 			fx.Land = &V3{0, 0, 3}
 		}
+	default:
+		titanEffects(&fx, kind(b), stage)
 	}
 	R := Yaw(Facing(loc, b))
 	turn := func(ps []V3) {
@@ -614,10 +628,15 @@ var concreteRamp = Ramp{Hex(0x2b2230), Hex(0x4b3f4c), Hex(0x6d5f69), Hex(0x8c7c8
 
 func colonyBiome(loc *game.Location) *biome {
 	b := *desertBiome
-	if loc.Biome == "ice" {
+	switch loc.Biome {
+	case "ice":
 		b = *iceBiome
 		b.road = Ramp{Hex(0x202b40), Hex(0x36495d), Hex(0x53677b), Hex(0x758899), Hex(0x9aabb8), Hex(0xc8d5dd)}
-	} else {
+	case "titan":
+		// Streets of packed, darker tholin between the dunes.
+		b = *titanBiome
+		b.road = Ramp{Hex(0x241f1a), Hex(0x3d352c), Hex(0x5a4f42), Hex(0x786a58), Hex(0x978670), Hex(0xbcaa8e)}
+	default:
 		b.road = concreteRamp
 	}
 	return &b

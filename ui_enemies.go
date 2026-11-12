@@ -311,6 +311,7 @@ var enemyRoles = map[string]string{
 	"walker": "Robot · Armored", "drone": "Robot · Flying support", "queen": "Alien · Boss",
 	"beetle": "Alien · Frost-proof", "splitter": "Alien · Splits", "shard": "Alien · Splinter",
 	"stinger": "Alien · Flying pack", "wyrm": "Alien · Boss",
+	"bloater": "Alien · Methane sack", "stalker": "Alien · Hides in fog", "kraken": "Alien · Boss",
 }
 
 func (a *App) cardLayout() (cardLayout, bool) {

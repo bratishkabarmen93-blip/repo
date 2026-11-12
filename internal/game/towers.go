@@ -15,6 +15,7 @@ const (
 	AtkPulse                     // frost waves around the turret
 	AtkFlame                     // a short cone of fire that sets enemies alight
 	AtkRail                      // an instant beam that ignores armour
+	AtkBeacon                    // never shoots: its light clears the fog and helps the turrets around it
 )
 
 // TargetMode decides which enemy in range a turret shoots at.
@@ -45,6 +46,7 @@ type TowerLevel struct {
 	SlowTime  float64
 	Burn      float64 // burn damage per second
 	BurnTime  float64
+	Boost     float64 // beacon: extra range of the turrets in its light (a share)
 }
 
 func (l TowerLevel) DPS() float64 { return l.Damage * l.FireRate }
@@ -64,7 +66,8 @@ type SuperDef struct {
 	PatchEvery  float64 // flamer: seconds between napalm pools while firing
 	PatchLife   float64
 	PatchR      float64
-	Pierce      bool // railgun: the beam hits every enemy in its line
+	Pierce      bool    // railgun: the beam hits every enemy in its line
+	Haste       float64 // beacon: extra fire rate of the turrets in its light (a share)
 }
 
 // TowerDef describes a turret type.
@@ -86,7 +89,8 @@ type TowerDef struct {
 func (t *TowerDef) CanTarget(e *EnemyDef) bool { return t.AntiAir == e.Flying }
 
 // Aims reports whether the turret picks targets (and so has targeting modes).
-func (t *TowerDef) Aims() bool     { return t.Attack != AtkPulse }
+func (t *TowerDef) Aims() bool     { return t.Attack != AtkPulse && t.Attack != AtkBeacon }
+func (t *TowerDef) Shoots() bool   { return t.Attack != AtkBeacon }
 func (t *TowerDef) NumLevels() int { return len(t.Levels) + 1 }
 func (t *TowerDef) Cost() int      { return t.Levels[0].Cost }
 
@@ -155,9 +159,26 @@ var (
 			Desc: "Fires three missiles at once, at different targets when it can."},
 	}
 
-	// TowerOrder is the order of the build menu (hotkeys 1-5).
-	TowerOrder = []*TowerDef{Blaster, Cryo, Flamer, Railgun, Skyguard}
-	TowerDefs  = map[string]*TowerDef{}
+	// Beacon arrives on Titan: it never shoots, but its light clears the fog.
+	Beacon = &TowerDef{
+		ID: "beacon", Name: "Beacon", Role: "Clears fog", Attack: AtkBeacon,
+		Desc: "Never shoots. Its light clears the fog and stretches the range of the turrets around it.",
+		Levels: []TowerLevel{
+			{Cost: 80, Build: buildTime, Range: 2.5, Boost: 0.15},
+			{Cost: 60, Build: buildTime, Range: 2.8, Boost: 0.2},
+			{Cost: 90, Build: buildTime, Range: 3.1, Boost: 0.25},
+		},
+		Super: SuperDef{Name: "Overdrive", Cost: 110, Build: superTime, Haste: 0.3,
+			Desc: "The turrets in its light also fire 30% faster."},
+	}
+
+	// TowerOrder is the order of the build menu (hotkeys 1-6).
+	TowerOrder = []*TowerDef{Blaster, Cryo, Flamer, Railgun, Skyguard, Beacon}
+	// ClassicTowers are the five turrets of Mars and Europa (the Beacon comes with Titan).
+	ClassicTowers = []*TowerDef{Blaster, Cryo, Flamer, Railgun, Skyguard}
+	// ClassicTurrets are their IDs, for the arsenal of a level.
+	ClassicTurrets = []string{"blaster", "cryo", "flamer", "railgun", "skyguard"}
+	TowerDefs      = map[string]*TowerDef{}
 )
 
 func init() {
@@ -183,10 +204,13 @@ type Tower struct {
 	Fresh    bool    // the job is the initial build (cancelling removes the turret)
 	Work     float64 // seconds of the current job done
 	WorkDur  float64
-	WorkCost int  // credits paid for the current job, refunded in full on cancel
-	Pulses   int  // frost waves sent (deep freeze counts them)
-	NoSuper  bool // super abilities are locked on this level
+	WorkCost int     // credits paid for the current job, refunded in full on cancel
+	Pulses   int     // frost waves sent (deep freeze counts them)
+	NoSuper  bool    // super abilities are locked on this level
+	HeldT    float64 // seconds the turret stays seized by tentacles (it does nothing)
+	HeldBy   int     // the enemy holding it
 	patchCD  float64
+	lit      bool // in the light of a Beacon this step: it sees hidden Stalkers
 }
 
 func (t *Tower) StatLevel() int    { return min(t.Level, len(t.Def.Levels)-1) }
@@ -429,7 +453,7 @@ func (w *World) pickTarget(t *Tower, r float64) *Enemy {
 	var bv, dv float64
 	r2 := r * r
 	for _, e := range w.Enemies {
-		if !e.Targetable() || !t.Def.CanTarget(e.Def) || e.Pos.Dist2(t.Pos) > r2 {
+		if !e.Targetable() || !t.Def.CanTarget(e.Def) || e.Hidden && !t.lit || e.Pos.Dist2(t.Pos) > r2 {
 			continue
 		}
 		v := t.score(e)
@@ -453,6 +477,7 @@ func (w *World) updateTowers(dt float64) {
 	for _, t := range w.Towers {
 		t.ShotT += dt
 		t.BuiltT += dt
+		w.updateHold(t, dt)
 		if t.Busy {
 			t.Work += dt
 			if t.Work >= t.WorkDur {
@@ -460,12 +485,18 @@ func (w *World) updateTowers(dt float64) {
 			}
 			continue
 		}
+		if t.HeldT > 0 || !t.Def.Shoots() {
+			continue // seized turrets wait; beacons just shine
+		}
 		t.Cooldown -= dt
 		t.patchCD -= dt
+		t.lit = w.Lit(t.Pos)
+		r := w.Range(t)
+		_, haste := w.Boosts(t)
 		if t.Def.Attack == AtkPulse {
-			w.updatePulse(t)
+			w.updatePulse(t, r, 1+haste)
 		} else {
-			w.updateAiming(t, dt)
+			w.updateAiming(t, dt, r, 1+haste)
 		}
 	}
 }
@@ -473,9 +504,11 @@ func (w *World) updateTowers(dt float64) {
 // aimTolerance is how far off a turret may point and still fire.
 var aimTolerance = map[AttackKind]float64{AtkBolt: 0.2, AtkMissile: 0.7, AtkFlame: 0.3, AtkRail: 0.06}
 
-func (w *World) updateAiming(t *Tower, dt float64) {
+// updateAiming turns a turret to its target and fires: r is its range right
+// now and rate the factor on its fire rate (Overdrive).
+func (w *World) updateAiming(t *Tower, dt, r, rate float64) {
 	st := t.Stats()
-	target := w.pickTarget(t, st.Range)
+	target := w.pickTarget(t, r)
 	if target == nil {
 		t.TargetID = 0
 		t.Cooldown = math.Max(t.Cooldown, 0)
@@ -498,22 +531,23 @@ func (w *World) updateAiming(t *Tower, dt float64) {
 	if t.Cooldown > 0 || math.Abs(AngleDiff(want, t.Angle)) > aimTolerance[t.Def.Attack] {
 		return
 	}
-	t.Cooldown = math.Max(t.Cooldown, -dt) + 1/st.FireRate
+	t.Cooldown = math.Max(t.Cooldown, -dt) + 1/(st.FireRate*rate)
 	t.ShotT = 0
 	switch t.Def.Attack {
 	case AtkBolt:
 		muzzle := t.Pos.Add(FromAngle(t.Angle).Mul(0.42))
 		p := w.newBolt(t.Def, t.Level, muzzle, nil, target, st.Damage, st.ProjSpeed)
+		p.Sight = t.lit
 		if t.HasSuper() {
 			p.Bounces = t.Def.Super.Bounces
 		}
 		w.emit(Event{Kind: EvShot, Pos: muzzle, Angle: t.Angle, ID: t.ID, Level: t.Level, Tower: t.Def})
 	case AtkMissile:
-		w.fireMissiles(t, target, st)
+		w.fireMissiles(t, target, st, r)
 	case AtkFlame:
-		w.flameTick(t, target, st)
+		w.flameTick(t, target, st, r)
 	case AtkRail:
-		w.fireRail(t, target, st)
+		w.fireRail(t, target, st, r)
 	}
 }
 
@@ -530,7 +564,7 @@ func (w *World) newBolt(td *TowerDef, level int, from Vec, fromDef *EnemyDef, ta
 }
 
 // fireMissiles launches one missile, or a salvo spread over several targets.
-func (w *World) fireMissiles(t *Tower, target *Enemy, st TowerLevel) {
+func (w *World) fireMissiles(t *Tower, target *Enemy, st TowerLevel, r float64) {
 	n := 1
 	if t.HasSuper() {
 		n = t.Def.Super.Salvo
@@ -538,9 +572,9 @@ func (w *World) fireMissiles(t *Tower, target *Enemy, st TowerLevel) {
 	targets := []*Enemy{target}
 	if n > 1 {
 		var more []*Enemy
-		r2 := st.Range * st.Range
+		r2 := r * r
 		for _, e := range w.Enemies {
-			if e != target && e.Targetable() && t.Def.CanTarget(e.Def) && e.Pos.Dist2(t.Pos) <= r2 && e.HP-e.pending > 0 {
+			if e != target && e.Targetable() && t.Def.CanTarget(e.Def) && (!e.Hidden || t.lit) && e.Pos.Dist2(t.Pos) <= r2 && e.HP-e.pending > 0 {
 				more = append(more, e)
 			}
 		}
@@ -558,7 +592,7 @@ func (w *World) fireMissiles(t *Tower, target *Enemy, st TowerLevel) {
 		w.Projectiles = append(w.Projectiles, &Projectile{
 			ID: w.id(), Kind: ProjMissile, Def: t.Def, Start: from, Pos: from, Prev: from,
 			TargetID: tg.ID, Target: tg.Def, Aim: tg.Pos, Speed: 2.2, MaxSpeed: st.ProjSpeed, Heading: h,
-			Damage: st.Damage, eff: eff, Splash: st.Splash, Level: t.Level, Index: i, alive: true,
+			Damage: st.Damage, eff: eff, Splash: st.Splash, Level: t.Level, Index: i, Sight: t.lit, alive: true,
 		})
 		tg.pending += eff
 	}
@@ -566,8 +600,8 @@ func (w *World) fireMissiles(t *Tower, target *Enemy, st TowerLevel) {
 }
 
 // flameTick burns every ground enemy inside the fire cone.
-func (w *World) flameTick(t *Tower, target *Enemy, st TowerLevel) {
-	reach := st.Range + 0.15
+func (w *World) flameTick(t *Tower, target *Enemy, st TowerLevel, r float64) {
+	reach := r + 0.15
 	for _, e := range w.Enemies {
 		if !e.Targetable() || e.Def.Flying {
 			continue
@@ -577,7 +611,7 @@ func (w *World) flameTick(t *Tower, target *Enemy, st TowerLevel) {
 		if l > reach || (l > 0.3 && math.Abs(AngleDiff(d.Angle(), t.Angle)) > t.Def.Cone) {
 			continue
 		}
-		w.hurt(e, e.Def.EffDamage(st.Damage*e.Def.FireMul()))
+		w.hurtBy(e, e.Def.EffDamage(st.Damage*e.Def.FireMul()), true)
 		if e.alive {
 			e.ignite(st.Burn, st.BurnTime)
 		}
@@ -591,13 +625,13 @@ func (w *World) flameTick(t *Tower, target *Enemy, st TowerLevel) {
 }
 
 // fireRail shoots an instant beam; with the super it pierces the whole line.
-func (w *World) fireRail(t *Tower, target *Enemy, st TowerLevel) {
+func (w *World) fireRail(t *Tower, target *Enemy, st TowerLevel, r float64) {
 	dir := FromAngle(t.Angle)
 	muzzle := t.Pos.Add(dir.Mul(0.5))
 	end := target.Pos
 	pierce := t.HasSuper() && t.Def.Super.Pierce
 	if pierce {
-		end = t.Pos.Add(dir.Mul(st.Range + 0.4))
+		end = t.Pos.Add(dir.Mul(r + 0.4))
 		var hit []*Enemy
 		for _, e := range w.Enemies {
 			if e.Targetable() && t.Def.CanTarget(e.Def) && (e == target || SegDist(e.Pos, muzzle, end) <= 0.34) {
@@ -615,13 +649,14 @@ func (w *World) fireRail(t *Tower, target *Enemy, st TowerLevel) {
 	w.emit(Event{Kind: EvRail, Pos: muzzle, To: end, Angle: t.Angle, ID: t.ID, Level: t.Level, Flag: pierce, Tower: t.Def, Enemy: target.Def})
 }
 
-// updatePulse sends a frost wave whenever a ground enemy is in range.
-func (w *World) updatePulse(t *Tower) {
+// updatePulse sends a frost wave whenever a ground enemy is in range r (the
+// waves need no aim, so they also catch hidden Stalkers).
+func (w *World) updatePulse(t *Tower, r, rate float64) {
 	st := t.Stats()
 	if t.Cooldown > 0 {
 		return
 	}
-	r2 := st.Range * st.Range
+	r2 := r * r
 	any := false
 	for _, e := range w.Enemies {
 		if e.Targetable() && !e.Def.Flying && e.Pos.Dist2(t.Pos) <= r2 {
@@ -633,7 +668,7 @@ func (w *World) updatePulse(t *Tower) {
 		t.Cooldown = 0
 		return
 	}
-	t.Cooldown += 1 / st.FireRate
+	t.Cooldown += 1 / (st.FireRate * rate)
 	t.ShotT = 0
 	t.Pulses++
 	s := t.Def.Super
@@ -657,7 +692,7 @@ func (w *World) updatePulse(t *Tower) {
 			w.hurt(e, e.Def.EffDamage(st.Damage))
 		}
 	}
-	w.emit(Event{Kind: EvPulse, Pos: t.Pos, ID: t.ID, Level: t.Level, R: st.Range, Flag: freeze, Tower: t.Def})
+	w.emit(Event{Kind: EvPulse, Pos: t.Pos, ID: t.ID, Level: t.Level, R: r, Flag: freeze, Tower: t.Def})
 }
 
 // --- projectiles -------------------------------------------------------------
@@ -690,6 +725,7 @@ type Projectile struct {
 	Index    int // missile number within a salvo
 	Life     float64
 	eff      float64 // damage reserved on the target
+	Sight    bool    // fired from the light of a Beacon: it keeps after hidden Stalkers
 	hit      []int   // enemies a ricochet chain has hit already
 	lost     bool    // a missile without a target flies on to its last aim point
 	alive    bool
@@ -744,7 +780,7 @@ func (w *World) ricochet(p *Projectile, from *Enemy) {
 	var best *Enemy
 	bd := s.BounceR * s.BounceR
 	for _, e := range w.Enemies {
-		if !e.Targetable() || !p.Def.CanTarget(e.Def) || e.HP-e.pending <= 0 || containsID(hit, e.ID) {
+		if !e.Targetable() || !p.Def.CanTarget(e.Def) || e.Hidden && !p.Sight || e.HP-e.pending <= 0 || containsID(hit, e.ID) {
 			continue
 		}
 		if d := e.Pos.Dist2(p.Pos); d <= bd {
@@ -759,7 +795,7 @@ func (w *World) ricochet(p *Projectile, from *Enemy) {
 		base /= s.BounceDmg // keep each ricochet at a share of the original bolt
 	}
 	q := w.newBolt(p.Def, p.Level, p.Pos, from.Def, best, base*s.BounceDmg, p.Speed)
-	q.Bounces, q.hit = p.Bounces-1, hit
+	q.Bounces, q.hit, q.Sight = p.Bounces-1, hit, p.Sight
 	w.emit(Event{Kind: EvBounce, Pos: p.Pos, ID: best.ID, Enemy: from.Def, Tower: p.Def})
 }
 
@@ -779,7 +815,7 @@ func (w *World) updateMissile(p *Projectile, dt float64) {
 		var best *Enemy
 		bd := 3.0 * 3.0
 		for _, e := range w.Enemies {
-			if e.Targetable() && p.Def.CanTarget(e.Def) && e.HP-e.pending > 0 {
+			if e.Targetable() && p.Def.CanTarget(e.Def) && (!e.Hidden || p.Sight) && e.HP-e.pending > 0 {
 				if d := e.Pos.Dist2(p.Pos); d < bd {
 					best, bd = e, d
 				}

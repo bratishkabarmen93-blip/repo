@@ -255,6 +255,7 @@ func (a *App) drawWorld(dst *ebiten.Image) {
 	// Ground markers and rings.
 	a.drawMarkers(dst)
 	a.drawRingFX(dst)
+	a.drawBeaconLight(dst)
 
 	// Objects back to front.
 	items := a.items[:0]
@@ -300,6 +301,9 @@ func (a *App) drawWorld(dst *ebiten.Image) {
 		}
 	}
 
+	a.drawTentacles(dst)
+	a.drawFog(dst)
+
 	a.drawBeams(dst)
 
 	a.drawRails(dst)
@@ -315,6 +319,9 @@ func (a *App) drawWorld(dst *ebiten.Image) {
 		lk := as.Looks[e.Def]
 		f := e.HP / e.MaxHP
 		al := smooth(0, 0.55, e.Left())
+		if e.Hidden {
+			al *= 0.3
+		}
 		x, y := e.Pos.X*P, e.Pos.Y*P
 		sx, sy := a.screenAt(x, y, a.enemyZ(e, lk)+lk.topZ+3)
 		a.drawHPBar(dst, sx, sy, lk.barW*cam.Z, math.Max(2, 1.8*cam.Z), f, e.Def.Armor > 0, e.HealT < 0.4, al)
@@ -454,6 +461,10 @@ func (a *App) enemySprite(e *game.Enemy) (*enemyLook, sprite, float64, float64) 
 	}
 	em := smooth(0, 0.35, e.Age)
 	al := em * smooth(0, 0.55, e.Left())
+	if e.Hidden {
+		// A Stalker in the fog: only a faint shimmer gives it away.
+		al *= 0.28 + 0.08*math.Sin(a.gameT*6+float64(e.ID))
+	}
 	return lk, lk.spr[angleIndex(h, enemyAngles)][a.enemyFrame(e, lk)], 0.65 + 0.35*em, al
 }
 

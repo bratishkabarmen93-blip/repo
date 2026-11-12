@@ -18,7 +18,7 @@ var Chapter1 = &Chapter{
 }
 
 // Chapters lists the campaign in order.
-var Chapters = []*Chapter{Chapter1, Chapter2}
+var Chapters = []*Chapter{Chapter1, Chapter2, Chapter3}
 
 // Skirmish is the full game on one map: every turret and every enemy.
 var Skirmish = Level1

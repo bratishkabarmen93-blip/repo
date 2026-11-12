@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"log"
 	"math/rand"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -40,7 +41,21 @@ func (a *App) expOpen() bool {
 // turret to build.
 func (a *App) knowledge() game.Knowledge {
 	first := game.Chapters[0].Levels[0]
-	return game.Learn(func(s *game.LevelSpec) bool { return s == first || a.best(s) > 0 })
+	won := func(s *game.LevelSpec) bool { return s == first || a.best(s) > 0 }
+	// It is gathered again only when a level has been won since: the chapter
+	// select asks for it every frame.
+	var key strings.Builder
+	for _, s := range game.AllLevels() {
+		if won(s) {
+			key.WriteString(s.ID)
+			key.WriteByte(' ')
+		}
+	}
+	if a.know == nil || a.knowKey != key.String() {
+		k := game.Learn(won)
+		a.know, a.knowKey = &k, key.String()
+	}
+	return *a.know
 }
 
 // expedition is the expedition on offer, made when first needed. It is made

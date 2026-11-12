@@ -89,6 +89,8 @@ func Glow(col color.RGBA) *Canvas {
 func Icon(name string) *Canvas {
 	c := NewCanvas(11, 11)
 	switch name {
+	case "fog", "kraken":
+		titanIcon(c, name)
 	case "hp":
 		c.Poly([][2]float64{{1.5, 1.5}, {9.5, 1.5}, {9.5, 5.5}, {5.5, 9.8}, {1.5, 5.5}}, Red)
 		c.Poly([][2]float64{{2.5, 2.5}, {5.5, 2.5}, {5.5, 7.5}, {2.5, 5}}, Pink)

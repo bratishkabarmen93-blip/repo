@@ -52,8 +52,11 @@ var iceBiome = &biome{
 }
 
 func biomeOf(l *game.Level) *biome {
-	if l.Spec.Biome == "ice" {
+	switch l.Spec.Biome {
+	case "ice":
 		return iceBiome
+	case "titan":
+		return titanBiome
 	}
 	return desertBiome
 }

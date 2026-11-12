@@ -269,6 +269,8 @@ func (a *App) towerButtons() ([]Button, Rect) {
 func towerStatSegs(d *game.TowerDef, st game.TowerLevel, lc, vc color.RGBA) []Seg {
 	rng := []Seg{{"  Range ", lc}, {decimal(st.Range), vc}}
 	switch d.Attack {
+	case game.AtkBeacon:
+		return []Seg{{"Light ", lc}, {decimal(st.Range), vc}, {"  Range boost ", lc}, {fmt.Sprintf("+%d%%", int(math.Round(st.Boost*100))), vc}}
 	case game.AtkPulse:
 		return append([]Seg{{"Slow ", lc}, {fmt.Sprintf("%d%%", int(math.Round(st.Slow*100))), vc}, {"  Damage ", lc}, {num(st.Damage), vc}}, rng...)
 	case game.AtkFlame:
@@ -284,6 +286,7 @@ var towerTraits = map[string][]Seg{
 	"flamer":   {{"Ground only · area burn", art.Gray}},
 	"railgun":  {{"Ground only · ", art.Gray}, {"ignores armor", art.Lilac}},
 	"skyguard": {{"Air only", art.Amber}, {" · splash damage", art.Gray}},
+	"beacon":   {{"Never shoots", art.Amber}, {" · clears fog · range boost", art.Gray}},
 }
 
 var targetModeDesc = [game.NumTargetModes]string{

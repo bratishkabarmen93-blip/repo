@@ -63,6 +63,7 @@ var towerAccents = map[string]struct {
 	"flamer":   {art.Orange, "orange"},
 	"railgun":  {art.Lilac, "violet"},
 	"skyguard": {art.Red, "red"},
+	"beacon":   {art.Amber, "amber"},
 }
 
 // enemyLook is everything the renderer needs to show one enemy type.
@@ -118,6 +119,12 @@ var lookSpecs = []lookSpec{
 		goo: []color.RGBA{art.Amber, art.Yellow, art.Ochre, art.Cyan}, glow: "amber", dark: art.Brown, mid: art.Ochre, hi: art.Amber},
 	{id: "wyrm", frames: 8, fps: 5, bodyZ: 10, barW: 30, size: 2.4,
 		goo: []color.RGBA{art.Cyan, art.Blue, art.White, art.DeepBlue}, glow: "ice", dark: art.DeepBlue, mid: art.Blue, hi: art.Cyan},
+	{id: "bloater", frames: 6, perCell: 14, bodyZ: 7.5, barW: 18, size: 1.35,
+		goo: []color.RGBA{art.Amber, art.Ochre, art.Yellow, art.Tan}, glow: "amber", dark: art.Rust, mid: art.Ochre, hi: art.Amber},
+	{id: "stalker", frames: 6, perCell: 8, bodyZ: 5.5, barW: 13, size: 1,
+		goo: []color.RGBA{art.Cyan, art.Silver, art.White, art.DeepBlue}, glow: "cyan", dark: art.DeepBlue, mid: art.Steel, hi: art.Cyan},
+	{id: "kraken", frames: 8, perCell: 20, bodyZ: 9, barW: 30, size: 2.8,
+		goo: []color.RGBA{art.Magenta, art.Purple, art.Pink, art.Amber, art.Plum}, glow: "purple", dark: art.Purple, mid: art.Magenta, hi: art.Pink},
 }
 
 type glyph struct {
@@ -266,7 +273,7 @@ func NewAssets(levels []*game.Level) *Assets {
 	}
 	baked := make([][enemyAngles][]*art.Sprite, len(lookSpecs))
 	icons := make([][2]*art.Sprite, len(lookSpecs))
-	// The slowest bakes (wyrm, queen, walker, beetle, splitter) start first.
+	// The slowest bakes (kraken, wyrm, queen, bloater, walker, beetle, splitter) start first.
 	var wyrm [art.WyrmKinds][enemyAngles]*art.Sprite
 	for k := 0; k < art.WyrmKinds; k++ {
 		for h := 0; h < enemyAngles; h++ {
@@ -274,7 +281,7 @@ func NewAssets(levels []*game.Level) *Assets {
 		}
 	}
 	var order []int
-	for _, id := range []string{"wyrm", "queen", "walker", "beetle", "splitter"} {
+	for _, id := range []string{"kraken", "wyrm", "queen", "bloater", "walker", "beetle", "splitter"} {
 		for li, ls := range lookSpecs {
 			if ls.id == id {
 				order = append(order, li)
@@ -462,7 +469,7 @@ func NewAssets(levels []*game.Level) *Assets {
 	for i, l := range levels {
 		a.Terrains[l.Spec.ID] = terrainSet{toImage(grounds[i]), tinfos[i]}
 	}
-	for _, n := range []string{"hp", "cr", "wave", "time", "star", "star0", "lock", "info", "target", "super", "entrances", "crystal", "up", "check", "trophy"} {
+	for _, n := range []string{"hp", "cr", "wave", "time", "star", "star0", "lock", "info", "target", "super", "entrances", "crystal", "up", "check", "trophy", "fog", "kraken"} {
 		a.Icons[n] = toImage(art.Icon(n))
 	}
 	for r, g := range art.Glyphs() {

@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	ids := []string{"crawler", "runner", "swarmling", "walker", "drone", "queen", "beetle"}
-	frames := map[string]int{"crawler": 6, "runner": 6, "swarmling": 4, "walker": 8, "drone": 4, "queen": 8, "beetle": 6}
+	ids := []string{"crawler", "runner", "swarmling", "walker", "drone", "queen", "beetle", "bloater", "stalker", "kraken"}
+	frames := map[string]int{"crawler": 6, "runner": 6, "swarmling": 4, "walker": 8, "drone": 4, "queen": 8, "beetle": 6, "bloater": 6, "stalker": 6, "kraken": 8}
 	cell := 60
 	W := cell*8 + 20
 	H := len(ids)*cell*2 + 20 + 80

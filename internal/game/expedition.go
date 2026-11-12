@@ -44,15 +44,17 @@ var expTune = struct {
 	Rise       float64            // the last wave of 6 against the first
 	Boss       float64            // boss hit points, in last waves
 	BossChance float64            // how often a known boss leads the last wave
+	AirCap     float64            // a flock that cannot grow any more: its bugs at most this much above the usual toughness
 }{
 	Scale:      1,
 	Tier:       [4]float64{1, 0.55, 1.0, 1.38},
 	Layout:     map[string]float64{"single": 1, "twin": 1, "fronts": 0.8, "triple": 1, "siege": 1},
-	Theme:      map[string]float64{"Mixed": 1, "Swarm": 1, "Armored": 1, "Rush": 0.9, "Air raid": 1},
+	Theme:      map[string]float64{"Mixed": 1, "Swarm": 1, "Armored": 1, "Rush": 0.9, "Air raid": 1, "Ambush": 1},
 	LenExp:     0.7,
 	Rise:       9,
 	Boss:       0.35,
 	BossChance: 0.3,
+	AirCap:     1.5,
 }
 
 // expFactor is a tuning factor, 1 when the table has none.
@@ -66,7 +68,8 @@ func expFactor(m map[string]float64, k string) float64 {
 // expPressure is the threat of the last wave of a Medium expedition on an
 // average map, after each campaign level (calibrated with the test bots:
 // EXPCAL=1 go test -run TestExpeditionCalibrate -v).
-var expPressure = []float64{3700, 2900, 3300, 3200, 3100, 2600, 2050, 2150, 3500, 2650, 2700, 1950, 1600, 4000}
+var expPressure = []float64{3700, 2900, 3300, 3200, 3100, 2600, 2050, 2150, 3500, 2650, 2700, 1950, 1600, 4000,
+	3500, 3050, 3250, 3300, 3350, 3550, 3250}
 
 func expPressureAt(stage int) float64 {
 	return expPressure[min(max(stage, 1), len(expPressure))-1]
@@ -84,6 +87,7 @@ type Knowledge struct {
 	Entrances int          // the most burrows of a won map
 	Fronts    bool         // a won map attacked the base from both sides
 	Europa    bool         // the second world has been reached
+	Titan     bool         // the third world's fog has been met (its first level won)
 	Recent    []*LevelSpec // the last campaign levels won, newest first (up to 3)
 	Stage     int          // campaign position of the newest (1 is the first level)
 }
@@ -134,6 +138,7 @@ func Learn(won func(*LevelSpec) bool) Knowledge {
 	}
 	ch1 := Chapters[0].Levels
 	k.Europa = won(ch1[len(ch1)-1])
+	k.Titan = won(HuygensLanding)
 	return k
 }
 
@@ -149,7 +154,7 @@ func (k Knowledge) Key() string {
 	for _, d := range k.Bosses {
 		b.WriteString(d.ID + ",")
 	}
-	fmt.Fprintf(&b, "%v,%v,%d,%v,%v,%d", k.Target, k.Super, k.Entrances, k.Fronts, k.Europa, k.Stage)
+	fmt.Fprintf(&b, "%v,%v,%d,%v,%v,%v,%d", k.Target, k.Super, k.Entrances, k.Fronts, k.Europa, k.Titan, k.Stage)
 	return b.String()
 }
 
@@ -168,6 +173,7 @@ type expWorld struct {
 	Boss        *EnemyDef
 	Native      []*EnemyDef // nil: every known enemy
 	Adj, Noun   []string    // the parts of site names
+	Fog         bool        // banks of methane fog drift over its maps
 }
 
 func expWorlds(k Knowledge) []*expWorld {
@@ -180,8 +186,17 @@ func expWorlds(k Knowledge) []*expWorld {
 	if k.Europa {
 		ws = append(ws, &expWorld{
 			Name: "Europa", Biome: "ice", W: 25, Boss: Wyrm,
-			Adj:  []string{"Frost", "Glass", "Pale", "Rime", "Silent", "Blue", "Frozen", "Hollow"},
-			Noun: []string{"Shelf", "Drift", "Crevasse", "Lake", "Fields", "Floe", "Ridge", "Basin"},
+			// The bugs of Mars and Europa: Titan's own stay on Titan.
+			Native: []*EnemyDef{Crawler, Runner, Swarmling, Walker, Drone, Beetle, Splitter, Stinger},
+			Adj:    []string{"Frost", "Glass", "Pale", "Rime", "Silent", "Blue", "Frozen", "Hollow"},
+			Noun:   []string{"Shelf", "Drift", "Crevasse", "Lake", "Fields", "Floe", "Ridge", "Basin"},
+		})
+	}
+	if k.Titan {
+		ws = append(ws, &expWorld{
+			Name: "Titan", Biome: "titan", W: 24, Boss: Kraken, Fog: true,
+			Adj:  []string{"Amber", "Hazy", "Tholin", "Murky", "Dusky", "Misty", "Methane", "Umber"},
+			Noun: []string{"Mare", "Dunes", "Shore", "Patera", "Lacus", "Crater", "Plain", "Ridge"},
 		})
 	}
 	return ws
@@ -223,17 +238,20 @@ func expThemes() []expTheme {
 	return []expTheme{
 		{"Mixed", "Expect a bit of everything.", nil, nil},
 		{"Swarm", "Swarms: masses of small, quick bugs.",
-			map[string]float64{"swarmling": 5, "runner": 2.5, "stinger": 1.5, "splitter": 2, "walker": 0.4, "drone": 0.5, "beetle": 0.6},
+			map[string]float64{"swarmling": 5, "runner": 2.5, "stinger": 1.5, "splitter": 2, "walker": 0.4, "drone": 0.5, "beetle": 0.6, "bloater": 0.5},
 			[]string{"swarmling", "stinger"}},
 		{"Armored", "Heavy columns that soak up fire.",
-			map[string]float64{"walker": 4, "beetle": 3.5, "splitter": 2, "runner": 0.5, "swarmling": 0.5, "stinger": 0.5},
+			map[string]float64{"walker": 4, "beetle": 3.5, "splitter": 2, "bloater": 2.5, "runner": 0.5, "swarmling": 0.5, "stinger": 0.5},
 			[]string{"walker", "beetle"}},
 		{"Rush", "Fast bugs rush the road.",
-			map[string]float64{"runner": 5, "stinger": 1.5, "swarmling": 2, "walker": 0.4, "drone": 0.5, "beetle": 0.6},
+			map[string]float64{"runner": 5, "stinger": 1.5, "swarmling": 2, "stalker": 2, "walker": 0.4, "drone": 0.5, "beetle": 0.6, "bloater": 0.4},
 			[]string{"runner"}},
 		{"Air raid", "Much of the attack comes by air.",
-			map[string]float64{"drone": 4, "stinger": 4, "walker": 0.7, "beetle": 0.7},
+			map[string]float64{"drone": 4, "stinger": 4, "walker": 0.7, "beetle": 0.7, "bloater": 0.7},
 			[]string{"drone", "stinger"}},
+		{"Ambush", "Stalkers hunt from the fog.",
+			map[string]float64{"stalker": 5, "bloater": 2, "runner": 1.5, "swarmling": 0.7, "walker": 0.6, "drone": 0.6, "beetle": 0.6},
+			[]string{"stalker"}},
 	}
 }
 
@@ -267,6 +285,8 @@ var expKinds = map[string]expKind{
 	"beetle":    {[2]int{4, 10}, [2]float64{1.1, 1.5}, 1, 1.2, 0.75},
 	"splitter":  {[2]int{3, 8}, [2]float64{1.3, 1.8}, 1, 1.5, 0.9},
 	"stinger":   {[2]int{6, 14}, [2]float64{0.25, 0.3}, 2, 1.4, 1},
+	"bloater":   {[2]int{3, 8}, [2]float64{1.8, 3}, 1, 1.2, 0.9},
+	"stalker":   {[2]int{4, 12}, [2]float64{0.7, 1.4}, 1, 1.5, 1},
 }
 
 func expWeight(d *EnemyDef) float64 {
@@ -396,6 +416,9 @@ func expPool(k Knowledge, w *expWorld) []*EnemyDef {
 		if d.Flying && !k.hasTurret(Skyguard) {
 			continue
 		}
+		if d.Stealth && !k.hasTurret(Beacon) { // in the fog only a Beacon's light shows them
+			continue
+		}
 		out = append(out, d)
 	}
 	if len(out) == 0 {
@@ -458,6 +481,11 @@ func newExpedition(seed int64, k Knowledge, tier Tier) *Expedition {
 		roadLen, ents = expRoadLen(IronPass)
 	}
 	e.Layout, e.Theme = lay.Name, th.Name
+	// Titan: banks of methane fog over the pads that watch the roads.
+	var fog []FogBank
+	if w.Fog {
+		fog = expFog(r, rows, 2+(ents+r.Intn(2))/2)
+	}
 
 	// The pressure is calibrated by campaign stage and scaled by threat and
 	// map; the economy and the toughness of single bugs follow the last levels
@@ -490,15 +518,21 @@ func newExpedition(seed int64, k Knowledge, tier Tier) *Expedition {
 		turrets = []string{Blaster.ID}
 	}
 	desc := lay.Desc + " " + th.Desc
+	if len(fog) > 0 {
+		desc = lay.Desc + " Banks of methane fog drift over the roads. " + th.Desc
+	}
 	switch e.Boss {
 	case Queen:
 		desc += " The Hive Queen leads the last wave."
 	case Wyrm:
 		desc += " The Ice Wyrm hunts under the lakes in the last wave."
+	case Kraken:
+		desc += " The Kraken crawls out of the methane sea with the last wave."
 	}
 	e.Spec = &LevelSpec{
-		ID: ExpeditionID, Name: site, Desc: desc, Tip: expTip(th, k, e.Boss),
+		ID: ExpeditionID, Name: site, Desc: desc, Tip: expTip(th, k, e.Boss, len(fog) > 0),
 		Map:          rows,
+		Fog:          fog,
 		StartCredits: credits,
 		BaseHP:       max(baseHP, 100),
 		FirstPrep:    math.Round(first),
@@ -514,12 +548,21 @@ func newExpedition(seed int64, k Knowledge, tier Tier) *Expedition {
 	return e
 }
 
-func expTip(th expTheme, k Knowledge, boss *EnemyDef) string {
+func expTip(th expTheme, k Knowledge, boss *EnemyDef, fog bool) string {
+	const forecast = "Before every wave, dashed outlines show where the fog will drift. Build where it won't settle"
 	switch {
+	case boss == Kraken:
+		return "Spread your turrets along the Kraken's road, so that it can never seize all of them, and let the Railguns fire from further away."
 	case boss == Wyrm:
 		return "Hit the Wyrm where the road runs on solid ground: under the lakes it is out of reach."
 	case boss == Queen:
 		return "Keep firepower for the Hive Queen: she spawns swarmlings as she walks."
+	case th.Name == "Ambush" && k.hasTurret(Beacon):
+		return "Stalkers in the fog can only be targeted from a Beacon's light. Flames and frost waves hit them anyway."
+	case fog && th.Name == "Armored" && k.knows(Bloater) && k.hasTurret(Flamer):
+		return "Finish Bloaters with Flamers: burnt down, they explode and hurt the bugs around them instead of leaving fog behind."
+	case fog && !k.hasTurret(Beacon):
+		return forecast + "."
 	case th.Name == "Swarm" && k.hasTurret(Flamer):
 		return "Flamers burn whole swarms at once."
 	case th.Name == "Armored" && k.hasTurret(Railgun):
@@ -528,8 +571,108 @@ func expTip(th expTheme, k Knowledge, boss *EnemyDef) string {
 		return "Cryo slows the runners down for your other turrets."
 	case th.Name == "Air raid" && k.hasTurret(Skyguard):
 		return "Skyguards bring down what flies."
+	case fog:
+		return forecast + ", or clear it with a Beacon's light."
 	}
 	return "Spend early on the busiest stretch of road, then upgrade."
+}
+
+// expFog lays n banks of methane fog over a map (its rows): each one rests
+// over a pad that watches the road and drifts to another one, 4 to 9 cells
+// away, before the next wave, and back. The base stays clear.
+func expFog(r *rand.Rand, rows []string, n int) []FogBank {
+	var pads, road []Vec
+	var base Vec
+	nb := 0
+	for y, row := range rows {
+		for x, ch := range row {
+			c := Vec{float64(x) + 0.5, float64(y) + 0.5}
+			switch ch {
+			case 'o':
+				pads = append(pads, c)
+			case 'B':
+				base, nb = base.Add(c), nb+1
+			case '.':
+			default: // the road and its burrows
+				road = append(road, c)
+			}
+		}
+	}
+	if nb > 0 {
+		base = base.Mul(1 / float64(nb))
+	}
+	// A pad weighs as much as the road it watches: the fog matters where
+	// the turrets are busy.
+	var spots []Vec
+	var ws []float64
+	for _, p := range pads {
+		if p.Dist(base) < 4 {
+			continue
+		}
+		w := 0.0
+		for _, c := range road {
+			if c.Dist2(p) <= 2.5*2.5 {
+				w++
+			}
+		}
+		if w > 0 {
+			spots, ws = append(spots, p), append(ws, w)
+		}
+	}
+	pick := func(ok func(Vec) bool) (Vec, bool) {
+		tot := 0.0
+		for i, p := range spots {
+			if ok(p) {
+				tot += ws[i]
+			}
+		}
+		if tot == 0 {
+			return Vec{}, false
+		}
+		x := r.Float64() * tot
+		var last Vec
+		for i, p := range spots {
+			if !ok(p) {
+				continue
+			}
+			if last = p; x < ws[i] {
+				break
+			}
+			x -= ws[i]
+		}
+		return last, true
+	}
+	jitter := func(p Vec) Vec { return Vec{p.X + 0.8*(r.Float64()-0.5), p.Y + 0.8*(r.Float64()-0.5)} }
+	var banks []FogBank
+	for try := 0; len(banks) < n && try < 12; try++ {
+		a, ok := pick(func(p Vec) bool {
+			for _, b := range banks {
+				if b.Stops[0].Dist(p) < 4 {
+					return false
+				}
+			}
+			return true
+		})
+		if !ok {
+			break
+		}
+		b, ok := pick(func(p Vec) bool {
+			if d := p.Dist(a); d < 4 || d > 9 {
+				return false
+			}
+			for _, b := range banks {
+				if b.Stops[1].Dist(p) < 4 {
+					return false
+				}
+			}
+			return true
+		})
+		if !ok {
+			continue
+		}
+		banks = append(banks, FogBank{R: 2 + 0.1*float64(r.Intn(5)), Stops: []Vec{jitter(a), jitter(b)}})
+	}
+	return banks
 }
 
 // expPick picks the enemy type of a group.
@@ -646,6 +789,11 @@ func expWaves(r *rand.Rand, pool []*EnemyDef, th expTheme, boss *EnemyDef, n, en
 			}
 			c := max(1, int(math.Round(cnt)))
 			hm := math.Max(0.5, gb/(float64(c)*unit))
+			if d.Flying {
+				// Only Skyguards answer a flock: one that cannot grow any more
+				// keeps its bugs within reason, the rest of its share is dropped.
+				hm = math.Min(hm, expTune.AirCap*hmax)
+			}
 			gap := expLerp(kd.Gap[0], kd.Gap[1], r.Float64())
 			wv.Groups = append(wv.Groups, Group{
 				Enemy: d.ID, Count: c, Interval: expRound(gap, 100), Delay: expRound(delay, 10),

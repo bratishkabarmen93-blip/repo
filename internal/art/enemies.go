@@ -48,6 +48,12 @@ func EnemyScene(id string, heading float64, f, n int) *Scene {
 		return StingerScene(heading, f, n)
 	case "wyrm":
 		return WyrmHeadScene(heading, f, n)
+	case "bloater":
+		return BloaterScene(heading, f, n)
+	case "stalker":
+		return StalkerScene(heading, f, n)
+	case "kraken":
+		return KrakenScene(heading, f, n)
 	}
 	return CrawlerScene(heading, f, n)
 }
@@ -55,7 +61,7 @@ func EnemyScene(id string, heading float64, f, n int) *Scene {
 // EnemySprite bakes one animation frame with its ground shadow.
 func EnemySprite(id string, heading float64, f, n int) *Sprite {
 	o := Opts{Inner: 2.5, Shadows: true}
-	if id == "queen" || id == "walker" || id == "wyrm" {
+	if id == "queen" || id == "walker" || id == "wyrm" || id == "kraken" || id == "bloater" {
 		o.Inner = 3
 	}
 	return EnemyScene(id, heading, f, n).Bake(o, true, 0, 0)

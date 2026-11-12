@@ -3,13 +3,14 @@ package art
 import "math"
 
 // Turret types, in build-menu order (they match the game's tower IDs).
-var TurretIDs = []string{"blaster", "cryo", "flamer", "railgun", "skyguard"}
+var TurretIDs = []string{"blaster", "cryo", "flamer", "railgun", "skyguard", "beacon"}
 
 // TurretLevels is the number of looks per turret: three stat levels and the super.
 const TurretLevels = 4
 
 // Turret materials. Each type has its own accent so they read apart at a glance:
-// blaster cyan, cryo ice blue, flamer orange, railgun violet, skyguard red.
+// blaster cyan, cryo ice blue, flamer orange, railgun violet, skyguard red,
+// beacon amber.
 var (
 	mFrostM  = mat(Ramp{Navy, Slate, Steel, Gray, Silver, White}, 0.02, 0.4)
 	mIce     = mat(Ramp{Navy, DeepBlue, Blue, Cyan, White}, 0.02, 0.8)
@@ -41,6 +42,7 @@ var turretStyles = map[string]turretStyle{
 	"flamer":   {mTank, glow(Ramp{Maroon, Red, Orange, Amber, Yellow}, -0.3), mAmber},
 	"railgun":  {mViolet, glow(Ramp{Purple, Violet, Lilac, White}, -0.3), mViolet},
 	"skyguard": {mRedTrim, glow(Ramp{Plum, Maroon, Red, Pink}, -0.25), mRedTip},
+	"beacon":   {mBeaconTrim, glow(Ramp{Ochre, Amber, Yellow, White}, -0.25), mAmber},
 }
 
 // levelTrim is the ring colour of a level: plain, silver, gold, then the type
@@ -79,6 +81,8 @@ func TurretTip(id string, lv int) (fwd, z float64) {
 		return [4]float64{16.4, 18, 19.6, 19.6}[lv], PivotZ + MuzzleZ
 	case "skyguard":
 		return 5.6, PivotZ + 6.4
+	case "beacon":
+		return 0, PivotZ + beaconLampZ(lv)
 	}
 	return [4]float64{12.8, 13.2, 15.2, 15.2}[lv], PivotZ + MuzzleZ
 }
@@ -246,6 +250,8 @@ func turretHead(s *Scene, id string, lv int, a float64, o V3) {
 		railHead(s, x, lv)
 	case "skyguard":
 		skyHead(s, x, lv)
+	case "beacon":
+		beaconHead(s, x, lv)
 	default:
 		blasterHead(s, x, lv)
 	}

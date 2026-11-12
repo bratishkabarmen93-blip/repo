@@ -26,6 +26,26 @@ type SplitSpec struct {
 	HPMul float64 // health of the parts, relative to the parent's wave multiplier
 }
 
+// PuffSpec makes an enemy leave a small cloud of fog where it is destroyed.
+type PuffSpec struct {
+	R    float64 // radius (cells)
+	Life float64 // seconds it lasts
+}
+
+// BlastSpec makes an enemy explode when fire finishes it off.
+type BlastSpec struct {
+	R      float64 // radius (cells)
+	Damage float64 // at a health multiplier of 1 (it grows with the enemy's)
+}
+
+// GrabSpec makes an enemy seize the turrets nearest to it and shut them down.
+type GrabSpec struct {
+	Count  int     // turrets seized at once
+	Reach  float64 // cells
+	Period float64 // seconds between two grabs
+	Hold   float64 // seconds a seized turret stays shut down
+}
+
 // EnemyDef describes an enemy type.
 type EnemyDef struct {
 	ID     string
@@ -52,6 +72,15 @@ type EnemyDef struct {
 	Dive float64
 	// Spit is what it spits out ahead of itself when it comes up through a hole.
 	Spit *BroodSpec
+	// Puff: it leaves a cloud of fog where it is destroyed (unless fire
+	// finishes it off and it has a Blast).
+	Puff *PuffSpec
+	// Blast: when fire finishes it off, it explodes and burns the bugs around it.
+	Blast *BlastSpec
+	// Stealth: inside the fog, only turrets in the light of a Beacon can aim at it.
+	Stealth bool
+	// Grab: its tentacles seize the nearest turrets and shut them down for a while.
+	Grab *GrabSpec
 }
 
 // FireMul is the factor flames and burning damage are scaled by.
@@ -125,10 +154,29 @@ var (
 		Spit:  &BroodSpec{Enemy: "splitter", Count: 2, HPMul: 2},
 		Desc:  "A giant serpent of the frozen moon. It dives under the ice, where no turret can reach it.",
 	}
+	// Bloater is a slow sack of methane from Titan.
+	Bloater = &EnemyDef{
+		ID: "bloater", Name: "Bloater", Plural: "bloaters", HP: 120, Speed: 0.5, Damage: 18, Reward: 11, Spread: 0.06,
+		Puff:  &PuffSpec{R: 1.4, Life: 12},
+		Blast: &BlastSpec{R: 1.55, Damage: 40},
+		Desc:  "A slow sack of methane. Where it dies it leaves a cloud of fog, but if fire finishes it off, it explodes and burns the bugs around it.",
+	}
+	// Stalker is a hunter of Titan that hides in the fog.
+	Stalker = &EnemyDef{
+		ID: "stalker", Name: "Stalker", Plural: "stalkers", HP: 48, Speed: 1.2, Damage: 12, Reward: 8, Spread: 0.14,
+		Stealth: true,
+		Desc:    "A hunter that vanishes in the fog: there, only turrets in the light of a Beacon can aim at it.",
+	}
+	// Kraken is the boss of Titan: it crawls out of the methane sea of Kraken Mare.
+	Kraken = &EnemyDef{
+		ID: "kraken", Name: "Kraken", Plural: "krakens", HP: 3000, Speed: 0.3, Damage: 50, Reward: 160, Armor: 4, Boss: true,
+		Grab: &GrabSpec{Count: 2, Reach: 2.6, Period: 7, Hold: 4},
+		Desc: "The terror of the methane sea. Its tentacles seize the turrets nearest to it and shut them down for a few seconds.",
+	}
 )
 
 // EnemyOrder lists every enemy type in the order they are introduced.
-var EnemyOrder = []*EnemyDef{Crawler, Runner, Swarmling, Walker, Drone, Queen, Beetle, Splitter, Stinger, Wyrm}
+var EnemyOrder = []*EnemyDef{Crawler, Runner, Swarmling, Walker, Drone, Queen, Beetle, Splitter, Stinger, Wyrm, Bloater, Stalker, Kraken}
 
 // Offspring are enemy types born from others (never sent by a wave).
 var Offspring = []*EnemyDef{Shard}
@@ -191,8 +239,10 @@ type LevelSpec struct {
 	NoTarget     bool     // target priority is still locked
 	NoSuper      bool     // super abilities are still locked
 	Lesson       *Lesson
-	Biome        string // "" for the red desert of chapter 1, "ice" for the frozen moon
+	Biome        string // "" for the red desert of chapter 1, "ice" for the frozen moon, "titan" for the methane moon
 	Tier         Tier   // threat: sets the crystals its stars pay (colony.go)
+	// Fog lists the banks of methane fog that drift over the map (Titan).
+	Fog []FogBank
 }
 
 // Allows reports whether turrets of type d can be built on this level.

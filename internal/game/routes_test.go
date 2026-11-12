@@ -161,14 +161,14 @@ func TestBeetle(t *testing.T) {
 	// A deep-freeze cryo next to both.
 	pos := b.Pos
 	tw := &Tower{Def: Cryo, Level: 3, Pos: pos, Pulses: Cryo.Super.FreezeEvery - 1}
-	w.updatePulse(tw)
+	w.updatePulse(tw, tw.Stats().Range, 1)
 	if b.FreezeT > 0 || b.SlowT > 0 || c.FreezeT <= 0 {
 		t.Fatal("deep freeze freezes crawlers, not beetles")
 	}
 	// Fire deals double damage: flames and burning.
 	hp := b.HP
 	ft := &Tower{Def: Flamer, Pos: pos.Add(Vec{-0.5, 0}), Angle: 0}
-	w.flameTick(ft, b, Flamer.Levels[0])
+	w.flameTick(ft, b, Flamer.Levels[0], Flamer.Levels[0].Range)
 	if got, want := hp-b.HP, 2*Flamer.Levels[0].Damage; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("flame hit %.2f, want %.2f", got, want)
 	}

@@ -131,6 +131,8 @@ type App struct {
 	res     result
 	exp     *game.Expedition // the expedition on offer (made when first needed)
 	expKey  string           // the seed and knowledge it was made from
+	know    *game.Knowledge  // what the campaign has taught (see knowledge)
+	knowKey string           // the levels won that it was gathered from
 
 	sw, sh int
 	dpi    float64
@@ -772,6 +774,18 @@ func (a *App) handleEvents() {
 		case game.EvNapalm:
 			a.fx.NapalmSplash(x, y, g)
 			a.fx.decal(Decal{X: x, Y: y, Z: g, Img: a.as.Scorch[a.fx.rng.Intn(len(a.as.Scorch))], S: 0.55, Flip: a.fx.rng.Intn(2) == 0, Life: 8})
+		case game.EvGrab:
+			tx, ty := ev.To.X*art.CellPx, ev.To.Y*art.CellPx
+			tg := a.ground(tx, ty)
+			grabStart[ev.ID] = a.gameT
+			a.fx.Burst(tx, ty, tg+art.PadH+7, tg, 10, []color.RGBA{art.Purple, art.Magenta, art.Pink}, 55, 30, 110, 0.35, 1.5, false, 0, math.Pi)
+		case game.EvPuff:
+			a.fx.Burst(x, y, g+5, g, 12, []color.RGBA{art.Tan, art.Sand, art.Peach}, 30, 25, 30, 0.8, 1.8, false, 0, math.Pi)
+		case game.EvBlast:
+			a.fx.MissileBlast(x, y, g+bodyZ, g, ev.R*art.CellPx)
+			a.fx.decal(Decal{X: x, Y: y, Z: g, Img: a.as.Scorch[a.fx.rng.Intn(len(a.as.Scorch))], S: 0.7, Flip: a.fx.rng.Intn(2) == 0, Life: 8})
+		case game.EvHide, game.EvReveal:
+			a.fx.Burst(x, y, g+bodyZ, g, 6, []color.RGBA{art.Cyan, art.Silver, art.White}, 40, 20, 60, 0.3, 1.2, true, 0, math.Pi)
 		case game.EvBounce:
 			a.fx.Burst(x, y, g+bodyZ, g, 5, []color.RGBA{art.Cyan, art.White}, 60, 30, 120, 0.25, 1.4, true, 0, math.Pi)
 		}

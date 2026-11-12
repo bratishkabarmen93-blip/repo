@@ -78,15 +78,20 @@ func TestLevelKills(t *testing.T) {
 	if m["splitter"] == 0 || m["shard"] != 4*m["splitter"] {
 		t.Errorf("2-4 kills %v", m)
 	}
-	n := 0
-	for _, c := range Chapters {
+	n, before := 0, 0 // the whole campaign, the chapters before the last one
+	for i, c := range Chapters {
 		for _, l := range c.Levels {
-			n += TotalKills(LevelKills(l))
+			k := TotalKills(LevelKills(l))
+			n += k
+			if i < len(Chapters)-1 {
+				before += k
+			}
 		}
 	}
-	// A whole campaign reaches the first kill trophy but not the second.
-	if n < 1000 || n >= 5000 {
-		t.Errorf("campaign kills %d", n)
+	// The first kill trophy comes early; the second one falls in the last
+	// chapter of a first campaign.
+	if before < 1000 || before >= 5000 || n < 5000 {
+		t.Errorf("campaign kills %d, %d before the last chapter", n, before)
 	}
-	t.Logf("one campaign destroys %d enemies", n)
+	t.Logf("one campaign destroys %d enemies, %d before the last chapter", n, before)
 }

@@ -47,6 +47,12 @@ const (
 	EvSplit        // a splitter burst; Value is the number of parts
 	EvDive         // a diver went under the ice (Pos is the hole)
 	EvSurface      // a diver came up through a hole; Value is the number of enemies it spat out
+	EvGrab         // tentacles seized a turret: Pos is the seizer, To and ID the turret, Value the seizer, R the hold time
+	EvRelease      // a seized turret is free again (ID is the turret, Value the seizer)
+	EvPuff         // a Bloater left a cloud of fog (ID is the cloud, R its radius)
+	EvBlast        // a Bloater exploded: R is the radius, Value the number of enemies caught
+	EvHide         // a Stalker vanished in the fog
+	EvReveal       // a hidden Stalker can be seen again
 )
 
 // Event is emitted by the simulation so the presentation layer can react.
@@ -59,7 +65,7 @@ type Event struct {
 	Level int
 	Enemy *EnemyDef // the enemy type involved, if any
 	Tower *TowerDef // the turret type involved, if any
-	Flag  bool      // EvHit: armour absorbed part of the hit; EvSpawn: laid by the queen
+	Flag  bool      // EvHit: armour absorbed part of the hit; EvSpawn: laid by the queen; EvKill: fire dealt the blow
 	R     float64   // a radius or length in cells
 	To    Vec
 	Route int     // EvKill, EvDive, EvSurface: the route of the enemy
@@ -74,6 +80,7 @@ type Enemy struct {
 	MaxHP   float64
 	Dist    float64 // distance travelled along the path
 	Under   bool    // swimming under the ice: no turret can reach it
+	Hidden  bool    // a Stalker in the fog: only turrets in the light of a Beacon can aim at it
 	Offset  float64 // sideways offset from the path centre
 	Pos     Vec
 	Dir     Vec
@@ -90,6 +97,7 @@ type Enemy struct {
 	healCD  float64
 	broodCD float64
 	burnCD  float64
+	grabCD  float64
 	path    *Path
 	alive   bool
 }
@@ -174,6 +182,7 @@ type World struct {
 	SlotTower   []*Tower
 	Projectiles []*Projectile
 	Patches     []*Patch
+	Clouds      []*Cloud // fog: the drifting banks of the level and the puffs of Bloaters
 	Events      []Event
 	Kills       int
 	Leaks       int
@@ -187,12 +196,14 @@ type World struct {
 
 func NewWorld(l *Level, seed int64) *World {
 	s := l.Spec
-	return &World{
+	w := &World{
 		Lvl: l, Phase: PhasePrep, Timer: s.FirstPrep, TimerMax: s.FirstPrep,
 		Credits: s.StartCredits, BaseHP: s.BaseHP, BaseMaxHP: s.BaseHP,
 		SlotTower: make([]*Tower, len(l.Slots)),
 		rng:       rand.New(rand.NewSource(seed)),
 	}
+	w.initFog()
+	return w
 }
 
 func (w *World) TotalWaves() int { return len(w.Lvl.Spec.Waves) }
@@ -267,6 +278,7 @@ func (w *World) step(dt float64) {
 			w.spawnOn(o.route, o.def, o.hpMul, 0, false)
 		}
 	}
+	w.updateFog(dt)
 	w.updateEnemies(dt)
 	if w.Phase == PhaseLost {
 		return
@@ -311,6 +323,7 @@ func (w *World) startWave() {
 		}
 	}
 	sort.SliceStable(w.pending, func(i, j int) bool { return w.pending[i].at < w.pending[j].at })
+	w.driftFog()
 	w.emit(Event{Kind: EvWaveStart, Value: w.Wave})
 }
 
@@ -346,7 +359,13 @@ func (w *World) spawnOn(route int, def *EnemyDef, hpMul, dist float64, laid bool
 	if def.Brood != nil {
 		e.broodCD = def.Brood.Period
 	}
+	if def.Grab != nil {
+		e.grabCD = def.Grab.Period * 0.5
+	}
 	w.place(e)
+	if def.Stealth {
+		e.Hidden = w.Foggy(e.Pos)
+	}
 	w.Enemies = append(w.Enemies, e)
 	w.emit(Event{Kind: EvSpawn, Pos: e.Pos, ID: e.ID, Enemy: def, Flag: laid, Value: route})
 	return e
@@ -380,6 +399,12 @@ func (w *World) updateEnemies(dt float64) {
 		if e.Def.Dive > 0 {
 			w.updateDive(e)
 		}
+		if e.Def.Stealth {
+			w.updateHidden(e)
+		}
+		if g := e.Def.Grab; g != nil && !e.Under && e.Dist < p.Len-0.5 {
+			w.updateGrab(e, g, dt)
+		}
 		e.FreezeT = math.Max(0, e.FreezeT-dt)
 		if e.SlowT > 0 {
 			if e.SlowT -= dt; e.SlowT <= 0 {
@@ -390,7 +415,7 @@ func (w *World) updateEnemies(dt float64) {
 			e.BurnT -= dt
 			if e.burnCD -= dt; e.burnCD <= 0 {
 				e.burnCD += burnTick
-				w.hurt(e, e.Def.EffDamage(e.BurnDPS*burnTick*e.Def.FireMul()))
+				w.hurtBy(e, e.Def.EffDamage(e.BurnDPS*burnTick*e.Def.FireMul()), true)
 				if !e.alive {
 					continue
 				}
@@ -511,8 +536,12 @@ func (w *World) damage(e *Enemy, dmg float64) {
 	w.hurt(e, dmg)
 }
 
-// hurt takes health without the hit flash (burning, frost, flames).
-func (w *World) hurt(e *Enemy, dmg float64) {
+// hurt takes health without the hit flash (frost).
+func (w *World) hurt(e *Enemy, dmg float64) { w.hurtBy(e, dmg, false) }
+
+// hurtBy takes health; fire tells whether flames or burning dealt it (fire
+// makes a Bloater explode instead of leaving fog behind).
+func (w *World) hurtBy(e *Enemy, dmg float64, fire bool) {
 	if !e.alive {
 		return
 	}
@@ -522,9 +551,15 @@ func (w *World) hurt(e *Enemy, dmg float64) {
 		e.alive = false
 		w.Credits += e.Def.Reward
 		w.Kills++
-		w.emit(Event{Kind: EvKill, Pos: e.Pos, ID: e.ID, Value: e.Def.Reward, Angle: e.Dir.Angle(), Enemy: e.Def, Route: e.Route, Dist: e.Dist})
+		w.emit(Event{Kind: EvKill, Pos: e.Pos, ID: e.ID, Value: e.Def.Reward, Angle: e.Dir.Angle(), Enemy: e.Def, Route: e.Route, Dist: e.Dist, Flag: fire})
 		if sp := e.Def.Split; sp != nil {
 			w.split(e, sp)
+		}
+		switch {
+		case fire && e.Def.Blast != nil:
+			w.blast(e, e.Def.Blast)
+		case e.Def.Puff != nil:
+			w.puff(e, e.Def.Puff)
 		}
 	}
 }
@@ -648,6 +683,12 @@ func (w *World) DebugWin() {
 func (w *World) DebugStartAt(n, credits int) {
 	n = max(1, min(n, w.TotalWaves()))
 	w.Wave = n - 1
+	for _, c := range w.Clouds {
+		if !c.Puff() {
+			p := w.Lvl.Spec.Fog[c.Bank].StopFor(n)
+			c.Pos, c.From, c.To = p, p, p
+		}
+	}
 	if credits > 0 {
 		w.Credits = credits
 	}

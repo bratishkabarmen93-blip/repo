@@ -44,7 +44,7 @@ var Trophies = []*Trophy{
 	{ID: "kepler", Name: "Kepler Veteran", Desc: "Earn 3 stars in the Skirmish at Kepler Outpost.", Reward: 30, Kind: TrPerfect, Level: Skirmish, Model: "kepler"},
 	{ID: "flawless", Name: "Flawless", Desc: "Win a battle without the base taking any damage.", Reward: 25, Kind: TrFlawless, Model: "shield"},
 	{ID: "close", Name: "Close Call", Desc: "Win a battle with 10% of the base or less.", Reward: 25, Kind: TrClose, Model: "flag"},
-	{ID: "supers", Name: "Supercharged", Desc: "Build every super upgrade at least once: Ricochet, Deep Freeze, Napalm, Overcharge and Salvo.", Reward: 30, Kind: TrSupers, Goal: len(TowerOrder), Model: "gem"},
+	{ID: "supers", Name: "Supercharged", Desc: "Build every super upgrade at least once: Ricochet, Deep Freeze, Napalm, Overcharge and Salvo.", Reward: 30, Kind: TrSupers, Goal: len(ClassicTowers), Model: "gem"},
 	{ID: "kills1", Name: "Exterminator", Desc: "Destroy 1000 enemies.", Reward: 20, Kind: TrKills, Goal: 1000, Model: "skull"},
 	{ID: "kills2", Name: "Hive Breaker", Desc: "Destroy 5000 enemies.", Reward: 40, Kind: TrKills, Goal: 5000, Model: "cup"},
 	{ID: "wins", Name: "Commander", Desc: "Win 25 battles. Replays count.", Reward: 30, Kind: TrWins, Goal: 25, Model: "chevrons"},
@@ -120,7 +120,7 @@ func (t *Trophy) Progress(r *Record) (have, goal int) {
 	case TrClose:
 		return flag(r.Close)
 	case TrSupers:
-		for _, d := range TowerOrder {
+		for _, d := range ClassicTowers {
 			if slices.Contains(r.Supers, d.ID) {
 				have++
 			}

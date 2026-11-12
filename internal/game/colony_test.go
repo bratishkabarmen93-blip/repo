@@ -123,3 +123,24 @@ func TestEuropaAvailabilityAndEconomy(t *testing.T) {
 		t.Fatal("colonies must have separate progress")
 	}
 }
+
+func TestTitanAvailabilityAndEconomy(t *testing.T) {
+	if Titan.Soon || Titan.Level != KrakenMare || Titan.Biome != "titan" {
+		t.Fatal("Titan must be a titan colony unlocked by Kraken Mare")
+	}
+	if Colonies[len(Colonies)-1] != Titan {
+		t.Fatal("Titan must follow Europa in the colony tabs")
+	}
+	if Titan.Stages() != 14 || Titan.Cost() != 670 {
+		t.Fatalf("unexpected Titan economy: %d stages, %d crystals", Titan.Stages(), Titan.Cost())
+	}
+	for _, id := range []string{"titan.habitat", "titan.refinery", "titan.greenhouse", "titan.lighthouse", "titan.airship", "titan.pad", "titan.monument"} {
+		if Titan.Building(id) == nil {
+			t.Errorf("missing %s", id)
+		}
+	}
+	record := map[string]int{"europa.habitat": 2, "titan.habitat": 3, "titan.lighthouse": 1, "titan.monument": 5}
+	if Europa.BuiltIn(record) != 2 || Titan.BuiltIn(record) != 5 {
+		t.Fatal("colonies must have separate progress")
+	}
+}

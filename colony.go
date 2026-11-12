@@ -920,8 +920,11 @@ func (a *App) drawColony(dst *ebiten.Image) {
 		a.drawColonyLock(dst, v, l)
 	default:
 		a.drawColonyMap(view, l)
-		if l.Biome == "ice" {
+		switch l.Biome {
+		case "ice":
 			a.drawColonySnow(view, v)
+		case "titan":
+			a.drawColonyDrizzle(view, v)
 		}
 		a.drawPriceTags(view, l)
 	}
@@ -1064,6 +1067,26 @@ func (a *App) drawColonySnow(dst *ebiten.Image, v Rect) {
 		y := top + math.Mod(f*127.9+a.col.t*(6+float64(i%4)), h)
 		size := max(1, a.u-1)
 		fillRect(dst, int(x), int(y), size, size, pm(art.Silver, 0.5))
+	}
+}
+
+// drawColonyDrizzle lets a slow methane drizzle fall over Titan's map: long,
+// faint amber drops that sink far slower than rain on Earth.
+func (a *App) drawColonyDrizzle(dst *ebiten.Image, v Rect) {
+	x0, y0 := a.cam.ToScreen(0, 0)
+	x1, y1 := a.cam.ToScreen(a.cam.MapW, a.cam.MapH)
+	left, top := math.Max(x0, float64(v.X)), math.Max(y0, float64(v.Y))
+	right, bottom := math.Min(x1, float64(v.X+v.W)), math.Min(y1, float64(v.Y+v.H))
+	w, h := right-left, bottom-top
+	if w <= 1 || h <= 1 {
+		return
+	}
+	size := max(1, a.u-1)
+	for i := 0; i < 40; i++ {
+		f := float64(i)
+		x := left + math.Mod(f*91.3+a.col.t*(1.5+float64(i%3)), w)
+		y := top + math.Mod(f*131.7+a.col.t*(12+3*float64(i%4)), h)
+		fillRect(dst, int(x), int(y), size, 3*size, pm(art.Sand, 0.3))
 	}
 }
 

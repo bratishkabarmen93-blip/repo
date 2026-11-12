@@ -31,7 +31,8 @@ func init() {
 	for _, s := range []*LevelSpec{IronPass, Convoy, Valley, TwinPasses, BeetleDrift} {
 		s.Tier = TierMedium
 	}
-	for _, s := range []*LevelSpec{HiveHeart, TwoFronts, ShatterField, StingerRidge, TripleBreach, WyrmLake, Level1} {
+	for _, s := range []*LevelSpec{HiveHeart, TwoFronts, ShatterField, StingerRidge, TripleBreach, WyrmLake, Level1,
+		HuygensLanding, ShangriLa, LigeiaShore, XanaduRidge, SotraPatera, SelkCrater, KrakenMare} {
 		s.Tier = TierHigh
 	}
 }
@@ -98,7 +99,7 @@ type Stage struct {
 }
 
 // Colonies are the locations in story order.
-var Colonies = []*Location{Mars, Europa}
+var Colonies = []*Location{Mars, Europa, Titan}
 
 // Mars is freed by beating the Hive Queen in 1-7.
 var Mars = &Location{
@@ -157,6 +158,35 @@ var Europa = &Location{
 		{ID: "europa.monument", Name: "Wyrm Monument", Lot: Cell{1, 5}, W: 3, H: 3,
 			Desc:   "A memorial to the Ice Wyrm and the battle for Europa.",
 			Stages: []Stage{{90, "The Ice Wyrm on its pedestal"}}},
+	},
+}
+
+var Titan = &Location{
+	ID: "titan", Name: "Titan", Boss: "Kraken", Level: KrakenMare, Biome: "titan",
+	Desc: "With the Kraken gone, settlers light up the shores of the methane sea.",
+	W:    24, H: 13, HQ: Cell{10, 5}, Avenue: 6.5,
+	Buildings: []*Building{
+		{ID: "titan.habitat", Name: "Dune Habitat", Lot: Cell{6, 2}, W: 2, H: 2,
+			Desc:   "Sealed homes ride out the methane rain behind dune fences.",
+			Stages: []Stage{{30, "A sealed dome for 3 colonists"}, {45, "A second dome, 6 colonists"}, {65, "A residential tower, 9 colonists"}}},
+		{ID: "titan.refinery", Name: "Methane Refinery", Lot: Cell{15, 9}, W: 2, H: 2,
+			Desc:   "The methane sea becomes fuel for the colony and its shuttles.",
+			Stages: []Stage{{35, "A distillation column and a flare stack"}, {50, "Storage spheres full of fuel"}}},
+		{ID: "titan.greenhouse", Name: "Bio Dome", Lot: Cell{6, 9}, W: 2, H: 2,
+			Desc:   "Heated, lit gardens grow food under the orange sky.",
+			Stages: []Stage{{30, "A heated growing tunnel"}, {45, "A second tunnel and water tank"}}},
+		{ID: "titan.lighthouse", Name: "Fog Lighthouse", Lot: Cell{17, 2}, W: 2, H: 2,
+			Desc:   "A giant Beacon keeps the methane fog off the colony.",
+			Stages: []Stage{{40, "A lattice tower with a lantern"}, {55, "A brighter lantern and warning lights"}}},
+		{ID: "titan.airship", Name: "Airship Dock", Lot: Cell{14, 2}, W: 2, H: 2,
+			Desc:   "In Titan's thick air and low gravity, airships carry cargo along the shore.",
+			Stages: []Stage{{35, "A mooring mast"}, {50, "A cargo airship at the mast"}}},
+		{ID: "titan.pad", Name: "Landing Pad", Lot: Cell{20, 5}, W: 3, H: 3,
+			Desc:   "A landing site for supply shuttles from the Vanguard.",
+			Stages: []Stage{{35, "A landing pad with lights"}, {55, "A control tower: shuttles start to arrive"}}},
+		{ID: "titan.monument", Name: "Kraken Monument", Lot: Cell{1, 5}, W: 3, H: 3,
+			Desc:   "A memorial to the Kraken and the battle for the methane sea.",
+			Stages: []Stage{{100, "The Kraken on its pedestal"}}},
 	},
 }
 
