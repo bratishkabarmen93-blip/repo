@@ -39,6 +39,7 @@ type chaptersLayout struct {
 	cards  []chapterCard
 	detail Rect
 	open   Button
+	prep   Button // the prepare window of the expedition on offer (no ID: none)
 }
 
 func (a *App) chaptersLayout() chaptersLayout {
@@ -78,6 +79,13 @@ func (a *App) chaptersLayout() chaptersLayout {
 	}
 	b.R = Rect{cl.detail.X + 8*u, cl.detail.Y + cl.detail.H - a.btnHeight() - 8*u, dw - 16*u, a.btnHeight()}
 	cl.open = b
+	if a.chap == expCard() && b.Enabled {
+		p := Button{ID: "prep", Label: "Prepare", Key: "P", Enabled: true}
+		p.R = Rect{b.R.X, b.R.Y, a.buttonWidth(p), b.R.H}
+		cl.open.R.X += p.R.W + 4*u
+		cl.open.R.W -= p.R.W + 4*u
+		cl.prep = p
+	}
 	return cl
 }
 
@@ -116,6 +124,9 @@ func (a *App) layoutChapters() {
 		a.addButton(c.btn)
 	}
 	a.addButton(cl.open)
+	if cl.prep.ID != "" {
+		a.addButton(cl.prep)
+	}
 }
 
 // openChapters shows the chapter select over the backdrop battle.
@@ -199,6 +210,8 @@ func (a *App) chapterKeys(enter bool) {
 		a.scr = scrMenu
 	case enter:
 		a.enterChapter()
+	case jp(ebiten.KeyP):
+		a.openPrepare()
 	case jp(ebiten.KeyArrowLeft) || jp(ebiten.KeyA) || jp(ebiten.KeyArrowUp) || jp(ebiten.KeyW):
 		a.chap = max(0, a.chap-1)
 	case jp(ebiten.KeyArrowRight) || jp(ebiten.KeyD) || jp(ebiten.KeyArrowDown) || jp(ebiten.KeyS):

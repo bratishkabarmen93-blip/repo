@@ -87,6 +87,7 @@ const (
 	panelNone panelKind = iota
 	panelGuide
 	panelSettings
+	panelPrepare // supplies and orders of the expedition on offer
 )
 
 // card is a queued "new enemy" card or the lesson of a tutorial level.
@@ -130,7 +131,8 @@ type App struct {
 	resetT  float64 // when "Reset progress" was armed
 	res     result
 	exp     *game.Expedition // the expedition on offer (made when first needed)
-	expKey  string           // the seed and knowledge it was made from
+	expKey  string           // the seed, order, supplies and knowledge it was made from
+	ord     game.ExpOrder    // the order being put together in the prepare window
 	know    *game.Knowledge  // what the campaign has taught (see knowledge)
 	knowKey string           // the levels won that it was gathered from
 
@@ -1225,6 +1227,10 @@ func (a *App) press(id string) {
 		}
 	case "open":
 		a.enterChapter()
+	case "prep":
+		a.openPrepare()
+	case "order":
+		a.placeOrder()
 	case "start":
 		a.playPick()
 	case "guide":
@@ -1251,6 +1257,10 @@ func (a *App) press(id string) {
 	default:
 		if id, ok := strings.CutPrefix(id, "build:"); ok && a.menuSlot >= 0 {
 			a.buildAt(a.menuSlot, game.TowerDefs[id])
+		} else if id, ok := strings.CutPrefix(id, "sup:"); ok {
+			a.buySupply(id)
+		} else if part, ok := strings.CutPrefix(id, "ord:"); ok {
+			a.cycleOrder(part)
 		} else if n, ok := cutIndex(id, "lv:"); ok {
 			a.pickCard(n)
 		} else if n, ok := cutIndex(id, "ch:"); ok {

@@ -423,7 +423,7 @@ func (a *App) drawResultStars(dst *ebiten.Image, y int, al float64) {
 	}
 }
 
-// ---- Windows over the screens: guide and settings ----
+// ---- Windows over the screens: guide, settings and expedition prepare ----
 
 func (a *App) openPanel(p panelKind) {
 	a.popup = p
@@ -469,6 +469,8 @@ func (a *App) layoutPanel() {
 		a.addButton(gl.close)
 	case panelSettings:
 		a.columnButtons(a.settingsColumn())
+	case panelPrepare:
+		a.columnButtons(a.prepareColumn())
 	}
 }
 
@@ -479,6 +481,8 @@ func (a *App) drawPanel(dst *ebiten.Image) {
 		a.drawGuide(dst)
 	case panelSettings:
 		a.drawColumn(dst, a.settingsColumn(), 1)
+	case panelPrepare:
+		a.drawColumn(dst, a.prepareColumn(), 1)
 	}
 }
 
